@@ -439,7 +439,7 @@ build_st() {
     # Install build dependencies on the build host
     local st_deps=()
     if [[ "$COMPOSITOR" == "hyprland" ]]; then
-        st_deps=(wayland wayland-protocols libxkbcommon pixman fontconfig freetype2 harfbuzz imlib2 pkg-config)
+        st_deps=(wayland wayland-protocols libxkbcommon pixman fontconfig freetype2 harfbuzz pkg-config)
     else
         st_deps=(libx11 libxft libxrender libxcursor fontconfig freetype2 harfbuzz imlib2 gd pkg-config)
     fi
