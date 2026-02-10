@@ -1,0 +1,471 @@
+#!/bin/bash
+#
+# smplOS Installer
+# Installs smplOS to disk from the live environment
+#
+# Usage: smplos-install [--auto]
+#
+
+set -e
+
+###############################################################################
+# Configuration
+###############################################################################
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_FILE="/tmp/smplos-install.log"
+OFFLINE_REPO="/var/cache/smplos/mirror/offline"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+###############################################################################
+# Helper Functions
+###############################################################################
+
+log() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: $1" >> "$LOG_FILE"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARN: $1" >> "$LOG_FILE"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" >> "$LOG_FILE"
+}
+
+header() {
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}  $1${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+}
+
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        error "This script must be run as root"
+        exit 1
+    fi
+}
+
+check_uefi() {
+    if [[ -d /sys/firmware/efi ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+###############################################################################
+# Disk Selection
+###############################################################################
+
+select_disk() {
+    header "Disk Selection"
+    
+    log "Available disks:"
+    echo ""
+    lsblk -d -o NAME,SIZE,MODEL | grep -v "loop\|sr\|rom"
+    echo ""
+    
+    # Get list of disks
+    disks=($(lsblk -d -n -o NAME | grep -v "loop\|sr\|rom"))
+    
+    if command -v gum &>/dev/null; then
+        DISK=$(printf '%s\n' "${disks[@]}" | gum choose --header "Select installation disk:")
+    else
+        echo "Enter disk name (e.g., sda, nvme0n1):"
+        read -r DISK
+    fi
+    
+    DISK="/dev/$DISK"
+    
+    if [[ ! -b "$DISK" ]]; then
+        error "Disk $DISK does not exist"
+        exit 1
+    fi
+    
+    warn "WARNING: All data on $DISK will be DESTROYED!"
+    echo ""
+    
+    if command -v gum &>/dev/null; then
+        gum confirm "Continue with installation to $DISK?" || exit 1
+    else
+        read -p "Type 'YES' to continue: " confirm
+        [[ "$confirm" != "YES" ]] && exit 1
+    fi
+    
+    log "Selected disk: $DISK"
+}
+
+###############################################################################
+# User Configuration
+###############################################################################
+
+configure_user() {
+    header "User Configuration"
+    
+    if command -v gum &>/dev/null; then
+        USERNAME=$(gum input --placeholder "Username" --prompt "Enter username: ")
+        HOSTNAME=$(gum input --placeholder "smplos" --prompt "Enter hostname: " --value "smplos")
+        PASSWORD=$(gum input --password --placeholder "Password" --prompt "Enter password: ")
+        PASSWORD_CONFIRM=$(gum input --password --placeholder "Password" --prompt "Confirm password: ")
+    else
+        read -p "Enter username: " USERNAME
+        read -p "Enter hostname [smplos]: " HOSTNAME
+        HOSTNAME="${HOSTNAME:-smplos}"
+        read -s -p "Enter password: " PASSWORD
+        echo ""
+        read -s -p "Confirm password: " PASSWORD_CONFIRM
+        echo ""
+    fi
+    
+    if [[ "$PASSWORD" != "$PASSWORD_CONFIRM" ]]; then
+        error "Passwords do not match"
+        exit 1
+    fi
+    
+    if [[ -z "$USERNAME" || -z "$PASSWORD" ]]; then
+        error "Username and password are required"
+        exit 1
+    fi
+    
+    log "Username: $USERNAME"
+    log "Hostname: $HOSTNAME"
+}
+
+###############################################################################
+# Partitioning
+###############################################################################
+
+partition_disk() {
+    header "Partitioning Disk"
+    
+    log "Creating partition table on $DISK..."
+    
+    # Wipe existing partitions
+    wipefs -af "$DISK" >> "$LOG_FILE" 2>&1
+    
+    if check_uefi; then
+        log "UEFI system detected, creating GPT partition table"
+        
+        # GPT partitioning for UEFI
+        parted -s "$DISK" mklabel gpt
+        parted -s "$DISK" mkpart ESP fat32 1MiB 513MiB
+        parted -s "$DISK" set 1 esp on
+        parted -s "$DISK" mkpart primary btrfs 513MiB 100%
+        
+        # Determine partition names
+        if [[ "$DISK" == *"nvme"* ]] || [[ "$DISK" == *"mmcblk"* ]]; then
+            EFI_PART="${DISK}p1"
+            ROOT_PART="${DISK}p2"
+        else
+            EFI_PART="${DISK}1"
+            ROOT_PART="${DISK}2"
+        fi
+        
+        # Format partitions
+        log "Formatting EFI partition..."
+        mkfs.fat -F32 "$EFI_PART" >> "$LOG_FILE" 2>&1
+        
+    else
+        log "Legacy BIOS system detected, creating MBR partition table"
+        
+        # MBR partitioning for BIOS
+        parted -s "$DISK" mklabel msdos
+        parted -s "$DISK" mkpart primary btrfs 1MiB 100%
+        parted -s "$DISK" set 1 boot on
+        
+        if [[ "$DISK" == *"nvme"* ]] || [[ "$DISK" == *"mmcblk"* ]]; then
+            ROOT_PART="${DISK}p1"
+        else
+            ROOT_PART="${DISK}1"
+        fi
+        
+        EFI_PART=""
+    fi
+    
+    # Format root partition
+    log "Formatting root partition with BTRFS..."
+    mkfs.btrfs -f "$ROOT_PART" >> "$LOG_FILE" 2>&1
+    
+    log "Partitioning complete"
+}
+
+###############################################################################
+# Mount Filesystems
+###############################################################################
+
+mount_filesystems() {
+    header "Mounting Filesystems"
+    
+    MOUNT_POINT="/mnt"
+    
+    # Mount root partition
+    log "Mounting root partition..."
+    mount "$ROOT_PART" "$MOUNT_POINT"
+    
+    # Create BTRFS subvolumes
+    log "Creating BTRFS subvolumes..."
+    btrfs subvolume create "$MOUNT_POINT/@" >> "$LOG_FILE" 2>&1
+    btrfs subvolume create "$MOUNT_POINT/@home" >> "$LOG_FILE" 2>&1
+    btrfs subvolume create "$MOUNT_POINT/@snapshots" >> "$LOG_FILE" 2>&1
+    btrfs subvolume create "$MOUNT_POINT/@var_log" >> "$LOG_FILE" 2>&1
+    
+    # Unmount and remount with subvolumes
+    umount "$MOUNT_POINT"
+    
+    mount -o subvol=@,compress=zstd,noatime "$ROOT_PART" "$MOUNT_POINT"
+    mkdir -p "$MOUNT_POINT"/{home,.snapshots,var/log,boot}
+    
+    mount -o subvol=@home,compress=zstd,noatime "$ROOT_PART" "$MOUNT_POINT/home"
+    mount -o subvol=@snapshots,compress=zstd,noatime "$ROOT_PART" "$MOUNT_POINT/.snapshots"
+    mount -o subvol=@var_log,compress=zstd,noatime "$ROOT_PART" "$MOUNT_POINT/var/log"
+    
+    # Mount EFI partition if UEFI
+    if [[ -n "$EFI_PART" ]]; then
+        mkdir -p "$MOUNT_POINT/boot/efi"
+        mount "$EFI_PART" "$MOUNT_POINT/boot/efi"
+    fi
+    
+    log "Filesystems mounted"
+}
+
+###############################################################################
+# Install Base System
+###############################################################################
+
+install_base() {
+    header "Installing Base System"
+    
+    # Copy pacman configuration for offline repo
+    log "Configuring pacman for offline installation..."
+    mkdir -p "$MOUNT_POINT/etc"
+    cp /etc/pacman.conf "$MOUNT_POINT/etc/pacman.conf"
+    
+    # Ensure offline repo is available
+    mkdir -p "$MOUNT_POINT/var/cache/smplos/mirror"
+    cp -r "$OFFLINE_REPO" "$MOUNT_POINT/var/cache/smplos/mirror/"
+    
+    # Install base packages
+    log "Installing packages (this may take a while)..."
+    
+    pacstrap -C /etc/pacman.conf "$MOUNT_POINT" \
+        base linux linux-firmware \
+        btrfs-progs \
+        grub efibootmgr \
+        networkmanager \
+        sudo vim nano \
+        >> "$LOG_FILE" 2>&1
+    
+    log "Base system installed"
+}
+
+###############################################################################
+# Configure System
+###############################################################################
+
+configure_system() {
+    header "Configuring System"
+    
+    # Generate fstab
+    log "Generating fstab..."
+    genfstab -U "$MOUNT_POINT" >> "$MOUNT_POINT/etc/fstab"
+    
+    # Set timezone
+    log "Setting timezone..."
+    arch-chroot "$MOUNT_POINT" ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+    arch-chroot "$MOUNT_POINT" hwclock --systohc
+    
+    # Set locale
+    log "Configuring locale..."
+    echo "en_US.UTF-8 UTF-8" >> "$MOUNT_POINT/etc/locale.gen"
+    arch-chroot "$MOUNT_POINT" locale-gen
+    echo "LANG=en_US.UTF-8" > "$MOUNT_POINT/etc/locale.conf"
+    
+    # Set hostname
+    log "Setting hostname..."
+    echo "$HOSTNAME" > "$MOUNT_POINT/etc/hostname"
+    cat > "$MOUNT_POINT/etc/hosts" << EOF
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
+EOF
+    
+    # Create user
+    log "Creating user $USERNAME..."
+    arch-chroot "$MOUNT_POINT" useradd -m -G wheel,video,audio,input -s /bin/bash "$USERNAME"
+    echo "$USERNAME:$PASSWORD" | arch-chroot "$MOUNT_POINT" chpasswd
+    
+    # Configure sudo
+    echo "%wheel ALL=(ALL:ALL) ALL" > "$MOUNT_POINT/etc/sudoers.d/wheel"
+    chmod 440 "$MOUNT_POINT/etc/sudoers.d/wheel"
+    
+    # Enable services
+    log "Enabling services..."
+    arch-chroot "$MOUNT_POINT" systemctl enable NetworkManager
+    
+    log "System configured"
+}
+
+###############################################################################
+# Install Bootloader
+###############################################################################
+
+install_bootloader() {
+    header "Installing Bootloader"
+    
+    if check_uefi; then
+        log "Installing GRUB for UEFI..."
+        arch-chroot "$MOUNT_POINT" grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=smplOS >> "$LOG_FILE" 2>&1
+    else
+        log "Installing GRUB for BIOS..."
+        arch-chroot "$MOUNT_POINT" grub-install --target=i386-pc "$DISK" >> "$LOG_FILE" 2>&1
+    fi
+    
+    # Generate GRUB config
+    log "Generating GRUB configuration..."
+    arch-chroot "$MOUNT_POINT" grub-mkconfig -o /boot/grub/grub.cfg >> "$LOG_FILE" 2>&1
+    
+    log "Bootloader installed"
+}
+
+###############################################################################
+# Install Desktop Environment
+###############################################################################
+
+install_desktop() {
+    header "Installing Desktop Environment"
+    
+    log "Installing Hyprland and desktop packages..."
+    
+    # Install from offline repo
+    arch-chroot "$MOUNT_POINT" pacman -S --noconfirm --needed \
+        hyprland hypridle hyprlock hyprpaper \
+        kitty thunar \
+        eww \
+        pipewire pipewire-alsa pipewire-pulse wireplumber \
+        ttf-jetbrains-mono-nerd noto-fonts \
+        firefox \
+        >> "$LOG_FILE" 2>&1 || warn "Some packages may not be available offline"
+    
+    log "Desktop environment installed"
+}
+
+###############################################################################
+# Copy Configurations
+###############################################################################
+
+copy_configs() {
+    header "Copying Configurations"
+    
+    USER_HOME="$MOUNT_POINT/home/$USERNAME"
+    
+    # Copy configs from live system
+    if [[ -d /etc/skel/.config ]]; then
+        log "Copying configuration files..."
+        cp -r /etc/skel/.config "$USER_HOME/"
+        arch-chroot "$MOUNT_POINT" chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.config"
+    fi
+    
+    # Copy EWW config
+    if [[ -d /home/smplos/.config/eww ]]; then
+        mkdir -p "$USER_HOME/.config"
+        cp -r /home/smplos/.config/eww "$USER_HOME/.config/"
+        arch-chroot "$MOUNT_POINT" chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.config/eww"
+    fi
+    
+    # Copy Hyprland config
+    if [[ -d /home/smplos/.config/hypr ]]; then
+        mkdir -p "$USER_HOME/.config"
+        cp -r /home/smplos/.config/hypr "$USER_HOME/.config/"
+        arch-chroot "$MOUNT_POINT" chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.config/hypr"
+    fi
+    
+    # Copy scripts
+    if [[ -d /usr/local/bin ]]; then
+        log "Copying scripts..."
+        # Copy all custom scripts (they don't have a prefix for easier rebranding)
+        for script in screenshot brightness-ctl volume-ctl lock-screen powermenu launcher bar-ctl sysinfo; do
+            [[ -f "/usr/local/bin/$script" ]] && cp "/usr/local/bin/$script" "$MOUNT_POINT/usr/local/bin/"
+        done
+        chmod +x "$MOUNT_POINT/usr/local/bin/"* 2>/dev/null || true
+    fi
+    
+    log "Configurations copied"
+}
+
+###############################################################################
+# Cleanup
+###############################################################################
+
+cleanup() {
+    header "Finalizing Installation"
+    
+    log "Cleaning up..."
+    
+    # Sync filesystem
+    sync
+    
+    # Unmount filesystems
+    umount -R "$MOUNT_POINT" 2>/dev/null || true
+    
+    log "Installation complete!"
+    echo ""
+    echo -e "${GREEN}smplOS has been installed successfully!${NC}"
+    echo ""
+    echo "You can now reboot into your new system."
+    echo "Log file: $LOG_FILE"
+    echo ""
+    
+    if command -v gum &>/dev/null; then
+        gum confirm "Reboot now?" && reboot
+    else
+        read -p "Reboot now? [y/N] " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] && reboot
+    fi
+}
+
+###############################################################################
+# Main
+###############################################################################
+
+main() {
+    clear
+    echo ""
+    echo -e "${BLUE}"
+    echo "  ███████╗███╗   ███╗██████╗ ██╗      ██████╗ ███████╗"
+    echo "  ██╔════╝████╗ ████║██╔══██╗██║     ██╔═══██╗██╔════╝"
+    echo "  ███████╗██╔████╔██║██████╔╝██║     ██║   ██║███████╗"
+    echo "  ╚════██║██║╚██╔╝██║██╔═══╝ ██║     ██║   ██║╚════██║"
+    echo "  ███████║██║ ╚═╝ ██║██║     ███████╗╚██████╔╝███████║"
+    echo "  ╚══════╝╚═╝     ╚═╝╚═╝     ╚══════╝ ╚═════╝ ╚══════╝"
+    echo -e "${NC}"
+    echo "             smplOS Installer"
+    echo ""
+    
+    check_root
+    
+    # Start installation
+    select_disk
+    configure_user
+    partition_disk
+    mount_filesystems
+    install_base
+    configure_system
+    install_bootloader
+    install_desktop
+    copy_configs
+    cleanup
+}
+
+main "$@"

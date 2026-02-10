@@ -1,0 +1,31 @@
+#!/bin/bash
+# Mount the QEMU shared folder at /mnt
+# Tries 9p virtio first, then VVFAT block devices as fallback
+# Usage: sudo vm-mount
+
+if [[ "$EUID" -ne 0 ]]; then
+  echo "Run with sudo: sudo vm-mount"
+  exit 1
+fi
+
+if mountpoint -q /mnt; then
+  echo "Already mounted at /mnt -- remounting..."
+  umount /mnt
+fi
+
+# Try 9p virtio first (preferred -- live sync, no remount needed)
+if mount -t 9p -o trans=virtio,version=9p2000.L hostshare /mnt 2>/dev/null; then
+  echo "Mounted 9p share at /mnt"
+  exit 0
+fi
+
+# Fallback: try VVFAT block devices
+for dev in /dev/vdb /dev/vdb1 /dev/vdc /dev/vdc1 /dev/sdb /dev/sdb1; do
+  if [[ -b "$dev" ]] && mount "$dev" /mnt 2>/dev/null; then
+    echo "Mounted $dev at /mnt"
+    exit 0
+  fi
+done
+
+echo "No shared folder found. Launch VM with test-iso.sh for 9p support."
+exit 1

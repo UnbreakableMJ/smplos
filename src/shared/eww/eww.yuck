@@ -1,0 +1,153 @@
+;; smplOS EWW Configuration
+;; Universal bar and launcher for Hyprland (Wayland) and DWM (X11)
+
+;; ============================================================================
+;; VARIABLES
+;; ============================================================================
+
+;; Time & Date
+(defpoll time :interval "1s" `date +"%H:%M"`)
+(defpoll date :interval "60s" `date +"%a, %b %d"`)
+(defpoll date-full :interval "60s" `date +"%A, %B %d, %Y"`)
+
+;; System Info
+(defpoll cpu :interval "2s" `sysinfo --cpu`)
+(defpoll memory :interval "2s" `sysinfo --mem`)
+(defpoll disk :interval "30s" `sysinfo --disk`)
+(defpoll temperature :interval "5s" `sysinfo --temp`)
+
+;; Battery
+(defpoll battery :interval "30s" `sysinfo --battery`)
+(defpoll battery-status :interval "30s" `sysinfo --battery-status`)
+(defpoll battery-icon :interval "30s" `sysinfo --battery-icon`)
+
+;; Audio (event-driven via pactl subscribe)
+(deflisten volume-data :initial '{"level":"0","muted":"no","icon":""}' `scripts/volume-listener.sh`)
+
+;; Brightness (event-driven via inotifywait)
+(deflisten brightness :initial "100" `scripts/brightness-listener.sh`)
+
+;; Network
+(defpoll wifi-ssid :interval "10s" `sysinfo --wifi`)
+(defpoll wifi-icon :interval "10s" `sysinfo --wifi-icon`)
+
+;; Workspace (for Hyprland)
+(deflisten workspaces :initial "[]" `scripts/workspaces.sh`)
+(deflisten active-workspace :initial "1" `scripts/active-workspace.sh`)
+
+;; Window title
+(deflisten window-title :initial "" `scripts/window-title.sh`)
+
+;; ============================================================================
+;; WIDGETS
+;; ============================================================================
+
+;; Logo/Menu button
+(defwidget logo []
+  (button :class "logo"
+          :onclick "launcher &"
+    "󰣇"))
+
+;; Workspaces widget
+(defwidget workspaces-widget []
+  (box :class "workspaces" :orientation "h" :space-evenly false :spacing 4
+    (for ws in workspaces
+      (button :class {ws == active-workspace ? "workspace active" : "workspace"}
+              :onclick "hyprctl dispatch workspace ${ws} 2>/dev/null || true"
+        ws))))
+
+;; Window title
+(defwidget window []
+  (box :class "window-title" :halign "start"
+    (label :text window-title :limit-width 50)))
+
+;; Clock widget
+(defwidget clock []
+  (box :class "clock" :orientation "h" :space-evenly false :spacing 8
+    (label :class "time" :text time)
+    (label :class "date" :text date)))
+
+;; System tray widgets
+(defwidget sys-tray []
+  (box :class "sys-tray" :orientation "h" :space-evenly false :spacing 12
+    ;; Volume
+    (button :class "tray-btn volume"
+            :onclick "volume-ctl toggle"
+            :onrightclick "pavucontrol &"
+      (box :orientation "h" :space-evenly false :spacing 4
+        (label :class "icon" :text {volume-data.icon})
+        (label :class "value" :text "${volume-data.level}%")))
+    
+    ;; Brightness
+    (eventbox :onscroll "brightness-ctl 5 {}"
+      (box :class "tray-btn brightness" :orientation "h" :space-evenly false :spacing 4
+        (label :class "icon" :text "󰃟")
+        (label :class "value" :text "${brightness}%")))
+    
+    ;; Battery (only show if available)
+    (box :visible {battery != "N/A"}
+      (box :class "tray-btn battery" :orientation "h" :space-evenly false :spacing 4
+        (label :class "icon" :text battery-icon)
+        (label :class "value" :text "${battery}%")))
+    
+    ;; WiFi
+    (button :class "tray-btn wifi"
+            :onclick "nm-connection-editor &"
+      (box :orientation "h" :space-evenly false :spacing 4
+        (label :class "icon" :text wifi-icon)
+        (label :class "value" :text {wifi-ssid ?: "Disconnected"})))))
+
+;; System stats
+(defwidget sys-stats []
+  (box :class "sys-stats" :orientation "h" :space-evenly false :spacing 12
+    (box :class "stat cpu" :orientation "h" :space-evenly false :spacing 4
+      (label :class "icon" :text "")
+      (label :class "value" :text "${cpu}%"))
+    (box :class "stat mem" :orientation "h" :space-evenly false :spacing 4
+      (label :class "icon" :text "")
+      (label :class "value" :text "${memory}%"))))
+
+;; Power button
+(defwidget power []
+  (button :class "power-btn"
+          :onclick "powermenu &"
+    "⏻"))
+
+;; ============================================================================
+;; BAR LAYOUT
+;; ============================================================================
+
+(defwidget bar-left []
+  (box :class "bar-left" :orientation "h" :space-evenly false :halign "start" :spacing 12
+    (logo)
+    (workspaces-widget)
+    (window)))
+
+(defwidget bar-center []
+  (box :class "bar-center" :orientation "h" :space-evenly false :halign "center"
+    (clock)))
+
+(defwidget bar-right []
+  (box :class "bar-right" :orientation "h" :space-evenly false :halign "end" :spacing 12
+    (sys-stats)
+    (sys-tray)
+    (power)))
+
+(defwidget bar-content []
+  (centerbox :class "bar-content"
+    (bar-left)
+    (bar-center)
+    (bar-right)))
+
+;; ============================================================================
+;; WINDOWS
+;; ============================================================================
+
+(defwindow bar
+  :monitor 0
+  :geometry (geometry :x "0%" :y "8px" :width "98%" :height "40px" :anchor "top center")
+  :stacking "fg"
+  :exclusive true
+  :focusable false
+  (bar-content))
+

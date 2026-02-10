@@ -1,0 +1,113 @@
+# smplOS Shared Packages (all compositors)
+# Compositor-specific packages go in src/compositors/<name>/packages.txt
+
+# ── Shell ────────────────────────────────────────────────────
+fish
+starship
+
+# ── Terminal ─────────────────────────────────────────────────
+# st-wl/st built from source (src/compositors/*/st/)
+# Build deps:
+harfbuzz
+imlib2
+
+# ── File Manager ─────────────────────────────────────────────
+thunar
+thunar-volman
+thunar-archive-plugin
+gvfs
+gvfs-mtp
+
+# ── Audio ────────────────────────────────────────────────────
+pipewire
+pipewire-alsa
+pipewire-pulse
+pipewire-jack
+wireplumber
+alsa-utils
+
+# ── Display / Input ──────────────────────────────────────────
+brightnessctl
+playerctl
+pamixer
+
+# ── Theming / GTK ────────────────────────────────────────────
+gtk3
+gtk4
+qt5ct
+kvantum
+kvantum-qt5
+
+# ── Fonts ────────────────────────────────────────────────────
+ttf-jetbrains-mono-nerd
+ttf-font-awesome
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+
+# ── Launcher / Menus ─────────────────────────────────────────
+rofi
+
+# ── Notifications ────────────────────────────────────────────
+libnotify
+dunst
+
+# ── Polkit ───────────────────────────────────────────────────
+polkit-gnome
+
+# ── CLI Utilities ────────────────────────────────────────────
+jq
+socat
+inotify-tools
+gum
+ripgrep
+fd
+fzf
+bat
+eza
+btop
+fastfetch
+unzip
+zip
+wget
+curl
+micro
+mission-center
+
+# ── Development ──────────────────────────────────────────────
+git
+base-devel
+
+# ── Network ──────────────────────────────────────────────────
+networkmanager
+network-manager-applet
+bluez
+bluez-utils
+
+# ── Bootloaders ──────────────────────────────────────────────
+grub
+syslinux
+mtools
+efibootmgr
+memtest86+
+memtest86+-efi
+limine
+edk2-shell
+
+# ── CPU Microcode ────────────────────────────────────────────
+intel-ucode
+amd-ucode
+
+# ── Installer ────────────────────────────────────────────────
+archinstall
+openssl
+
+# ── Login Manager / Boot Splash ──────────────────────────────
+sddm
+plymouth
+
+# ── Applications ─────────────────────────────────────────────
+mpv
+
+# ── XDG Portals ──────────────────────────────────────────────
+xdg-desktop-portal-gtk

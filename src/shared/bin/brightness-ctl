@@ -1,0 +1,46 @@
+#!/bin/bash
+# Brightness Control
+# Adjusts display brightness using brightnessctl
+
+step="${1:-5}"
+direction="${2:-up}"
+
+# Find the backlight device
+device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
+for candidate in amdgpu_bl* intel_backlight acpi_video*; do
+    if [[ -e "/sys/class/backlight/$candidate" ]]; then
+        device="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$device" ]]; then
+    # For "get" commands, silently return 100 (no backlight = always full brightness)
+    [[ "$direction" == "get" ]] && echo 100 && exit 0
+    # For interactive commands, notify once (but don't spam)
+    exit 1
+fi
+
+case "$direction" in
+    up|+)
+        brightnessctl -d "$device" set "+${step}%" >/dev/null
+        ;;
+    down|-)
+        brightnessctl -d "$device" set "${step}%-" >/dev/null
+        ;;
+    set)
+        brightnessctl -d "$device" set "${step}%" >/dev/null
+        ;;
+    get)
+        brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%'
+        exit 0
+        ;;
+    *)
+        echo "Usage: brightness-ctl <step> [up|down|set|get]"
+        exit 1
+        ;;
+esac
+
+# Get current brightness for notification
+current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
+notify-send "Brightness" "${current}%" -h int:value:$current -t 1000

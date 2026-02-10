@@ -1,0 +1,7 @@
+# smplOS Hyprland - AppImages
+# Format: name|url (URL to download the AppImage)
+# These are bundled directly into the ISO
+
+# Example entries (uncomment to include):
+# neovim|https://github.com/neovim/neovim/releases/download/v0.9.5/nvim.appimage
+# obsidian|https://github.com/obsidianmd/obsidian-releases/releases/download/v1.5.3/Obsidian-1.5.3.AppImage

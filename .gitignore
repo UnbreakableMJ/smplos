@@ -1,0 +1,70 @@
+# ── Build artifacts ──────────────────────────────────────────
+*.o
+*.a
+*.so
+*.so.*
+*.lo
+*.la
+*.dylib
+.objects/
+.deps/
+
+# ── Compiled binaries ───────────────────────────────────────
+*.elf
+src/compositors/hyprland/st/st-wl
+src/compositors/dwm/st/st
+
+# ── Generated protocol files (wayland-scanner output) ───────
+xdg-shell-protocol.c
+xdg-shell-client-protocol.h
+xdg-decoration-protocol.c
+xdg-decoration-protocol.h
+
+# ── st/st-wl generated config ──────────────────────────────
+config.h
+patches.h
+options
+
+# ── Release / VM testing (large files) ──────────────────────
+release/*.qcow2
+release/*.iso
+release/*.fd
+release/OVMF_VARS.fd
+release/vmshare/
+
+# ── ISO build outputs ──────────────────────────────────────
+src/iso/prebuilt/
+src/iso/pacman-cache/
+src/iso/offline-repo/*.pkg.tar.*
+src/iso/offline-repo/*.db
+src/iso/offline-repo/*.db.tar.*
+src/iso/offline-repo/*.files
+src/iso/offline-repo/*.files.tar.*
+*.iso
+
+# ── Caches ──────────────────────────────────────────────────
+.cache/
+*.cache
+
+# ── Reference material (3rd-party dotfiles, not our code) ───
+reference/
+
+# ── Sandbox / experiments ───────────────────────────────────
+sandbox/
+
+# ── Scratch / notes (not project docs) ──────────────────────
+prompt.txt
+smplOS.md
+lightdm vs sddm
+
+# ── Editor / IDE ────────────────────────────────────────────
+.vscode/
+*.swp
+*.swo
+*~
+.idea/
+compile_commands.json
+
+# ── OS junk ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

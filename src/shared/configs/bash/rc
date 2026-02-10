@@ -1,0 +1,27 @@
+# smplOS bash configuration
+# Only for interactive shells
+[[ $- != *i* ]] && return
+
+# Aliases
+alias ls='eza --icons --group-directories-first 2>/dev/null || ls --color=auto'
+alias ll='eza -la --icons --group-directories-first 2>/dev/null || ls -la --color=auto'
+alias la='eza -a --icons --group-directories-first 2>/dev/null || ls -a --color=auto'
+alias cat='bat --style=plain --paging=never 2>/dev/null || cat'
+alias grep='grep --color=auto'
+alias tree='eza --tree --icons 2>/dev/null || tree'
+alias ..='cd ..'
+alias ...='cd ../..'
+
+# PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# History
+HISTSIZE=10000
+HISTFILESIZE=20000
+HISTCONTROL=ignoreboth:erasedups
+shopt -s histappend
+
+# Starship prompt (if available)
+if command -v starship &>/dev/null; then
+  eval "$(starship init bash)"
+fi

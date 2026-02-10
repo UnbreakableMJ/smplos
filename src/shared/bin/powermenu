@@ -1,0 +1,48 @@
+#!/bin/bash
+# Power Menu
+# Shows power options using EWW or dmenu/wofi fallback
+
+show_menu() {
+    local options="  Lock\n  Logout\n  Suspend\n⏻  Shutdown\n  Reboot"
+    
+    # Try wofi first (Wayland), then dmenu (X11)
+    if [[ -n "$WAYLAND_DISPLAY" ]] && command -v wofi &>/dev/null; then
+        echo -e "$options" | wofi --dmenu --prompt "Power" --width 200 --height 250
+    elif command -v dmenu &>/dev/null; then
+        echo -e "$options" | dmenu -p "Power:"
+    elif command -v fuzzel &>/dev/null; then
+        echo -e "$options" | fuzzel --dmenu --prompt "Power: "
+    else
+        # Fallback to gum if available
+        if command -v gum &>/dev/null; then
+            echo -e "$options" | gum choose
+        else
+            echo "No menu program found"
+            exit 1
+        fi
+    fi
+}
+
+choice=$(show_menu)
+
+case "$choice" in
+    *Lock*)
+        lock-screen
+        ;;
+    *Logout*)
+        if [[ -n "$WAYLAND_DISPLAY" ]]; then
+            hyprctl dispatch exit 2>/dev/null || loginctl terminate-user "$USER"
+        else
+            pkill -KILL -u "$USER"
+        fi
+        ;;
+    *Suspend*)
+        systemctl suspend
+        ;;
+    *Shutdown*)
+        systemctl poweroff
+        ;;
+    *Reboot*)
+        systemctl reboot
+        ;;
+esac

@@ -1,0 +1,32 @@
+# smplOS Hyprland-specific Packages (Wayland only)
+# Shared packages are in src/shared/packages.txt
+
+# ── Hyprland Core ────────────────────────────────────────────
+hyprland
+hypridle
+hyprlock
+
+# ── Wayland Essentials ───────────────────────────────────────
+wayland
+xorg-xwayland
+qt5-wayland
+qt6-wayland
+xdg-desktop-portal-hyprland
+
+# ── Wayland Screenshot / Clipboard ───────────────────────────
+grim
+slurp
+wl-clipboard
+swappy
+
+# ── Wayland Input Simulation ─────────────────────────────────
+wtype
+
+# ── Wayland Display Utilities ────────────────────────────────
+wlr-randr
+
+# ── Wayland Wallpaper ────────────────────────────────────────
+swaybg
+
+# ── Wayland Image Viewer ─────────────────────────────────────
+imv

@@ -1,0 +1,45 @@
+#!/bin/bash
+# Screenshot Tool
+# Takes screenshots, saves to Pictures/Screenshots
+# Wayland: grim + slurp | X11: maim + slop
+
+SCREENSHOT_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"
+mkdir -p "$SCREENSHOT_DIR"
+
+FILENAME="$SCREENSHOT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
+
+if [[ -n "$WAYLAND_DISPLAY" ]]; then
+  # ── Wayland (grim + slurp) ──
+  case "${1:-region}" in
+    region)
+      SELECTION=$(slurp 2>/dev/null)
+      [[ -z "$SELECTION" ]] && exit 0
+      grim -g "$SELECTION" "$FILENAME"
+      ;;
+    window)
+      if command -v hyprctl &>/dev/null; then
+        SELECTION=$(hyprctl activewindow -j | jq -r '"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')
+        grim -g "$SELECTION" "$FILENAME"
+      else
+        grim "$FILENAME"
+      fi
+      ;;
+    fullscreen|full) grim "$FILENAME" ;;
+    *) echo "Usage: screenshot [region|window|fullscreen]"; exit 1 ;;
+  esac
+  wl-copy < "$FILENAME" 2>/dev/null
+else
+  # ── X11 (maim + slop) ──
+  case "${1:-region}" in
+    region)   maim -s "$FILENAME" || exit 0 ;;
+    window)   maim -i "$(xdotool getactivewindow)" "$FILENAME" ;;
+    fullscreen|full) maim "$FILENAME" ;;
+    *) echo "Usage: screenshot [region|window|fullscreen]"; exit 1 ;;
+  esac
+  xclip -selection clipboard -t image/png < "$FILENAME" 2>/dev/null
+fi
+
+# Notify
+notify-send "Screenshot saved" "$FILENAME" -i "$FILENAME" -t 3000
+
+echo "$FILENAME"

@@ -1,0 +1,51 @@
+#!/bin/bash
+# smplOS Keybinding Help -- rofi-based searchable keybinding reference
+# Parses bindings.conf and displays all keybindings in a filterable list.
+
+CONF="$HOME/.config/smplos/bindings.conf"
+[[ -f "$CONF" ]] || { notify-send "Keybind Help" "No bindings.conf found"; exit 1; }
+
+# Parse bindd lines: bindd = MODS, KEY, DESCRIPTION, DISPATCHER, ARGS
+lines=()
+while IFS= read -r line; do
+  [[ "$line" =~ ^bindd[[:space:]]*= ]] || continue
+  # Strip "bindd = " prefix, then split on commas
+  fields="${line#*=}"
+  IFS=',' read -r mods key desc _ <<< "$fields"
+  mods=$(echo "$mods" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+  key=$(echo "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+  desc=$(echo "$desc" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+
+  # Build display: "Super+Enter     Terminal"
+  # Title-case modifiers and friendly key names (display only, config untouched)
+  combo=$(echo "$mods" | tr -s ' ' '+' | sed -E 's/^\+|\+$//g')
+  [[ -n "$key" ]] && combo="${combo:+$combo+}$key"
+  combo=$(echo "$combo" | sed -E '
+    s/SUPER/Super/g; s/SHIFT/Shift/g; s/CTRL/Ctrl/g; s/ALT/Alt/g
+    s/RETURN/Enter/g; s/SPACE/Space/g; s/ESCAPE/Esc/g
+    s/BackSpace/Backspace/g; s/DELETE/Delete/g; s/TAB/Tab/g
+    s/PRINT/Print/g
+    s/LEFT/Left/g; s/RIGHT/Right/g; s/UP/Up/g; s/DOWN/Down/g
+    s/code:10/1/g; s/code:11/2/g; s/code:12/3/g; s/code:13/4/g; s/code:14/5/g
+    s/code:15/6/g; s/code:16/7/g; s/code:17/8/g; s/code:18/9/g; s/code:19/0/g
+    s/XF86AudioRaiseVolume/Vol Up/g; s/XF86AudioLowerVolume/Vol Down/g
+    s/XF86AudioMute/Mute/g; s/XF86AudioMicMute/Mic Mute/g
+    s/XF86MonBrightnessUp/Bright Up/g; s/XF86MonBrightnessDown/Bright Down/g
+    s/XF86AudioPlay/Play/g; s/XF86AudioPause/Pause/g
+    s/XF86AudioNext/Next Track/g; s/XF86AudioPrev/Prev Track/g
+    s/code:20/-/g; s/code:21/=/g
+    s/BACKSpace/Backspace/g; s/COMMA/,/g
+    s/mouse_down/Scroll Down/g; s/mouse_up/Scroll Up/g
+  ')
+  lines+=("$(printf '%-24s %s' "$combo" "$desc")")
+done < "$CONF"
+
+(( ${#lines[@]} )) || { notify-send "Keybind Help" "No keybindings found"; exit 1; }
+
+# Show in rofi (read-only display, no action on selection)
+ROFI_THEME="$HOME/.config/rofi/smplos.rasi"
+rofi_args=(-dmenu -i -p "Keys" -matching fuzzy -sorting-method fzf)
+rofi_args+=(-mesg "Keybindings reference  --  type to filter")
+[[ -f "$ROFI_THEME" ]] && rofi_args+=(-theme "$ROFI_THEME")
+
+printf '%s\n' "${lines[@]}" | rofi "${rofi_args[@]}" >/dev/null 2>&1

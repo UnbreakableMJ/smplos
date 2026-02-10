@@ -1,0 +1,53 @@
+#!/bin/bash
+# Volume Control
+# Controls audio volume using pamixer or pactl
+
+action="${1:-get}"
+value="${2:-5}"
+
+case "$action" in
+    up|+)
+        pamixer -i "$value" 2>/dev/null || pactl set-sink-volume @DEFAULT_SINK@ +${value}%
+        ;;
+    down|-)
+        pamixer -d "$value" 2>/dev/null || pactl set-sink-volume @DEFAULT_SINK@ -${value}%
+        ;;
+    set)
+        pamixer --set-volume "$value" 2>/dev/null || pactl set-sink-volume @DEFAULT_SINK@ ${value}%
+        ;;
+    toggle|mute)
+        pamixer -t 2>/dev/null || pactl set-sink-mute @DEFAULT_SINK@ toggle
+        ;;
+    get)
+        pamixer --get-volume 2>/dev/null || pactl get-sink-volume @DEFAULT_SINK@ | grep -oP '\d+%' | head -1 | tr -d '%'
+        exit 0
+        ;;
+    is-muted)
+        pamixer --get-mute 2>/dev/null || pactl get-sink-mute @DEFAULT_SINK@ | grep -q yes && echo "true" || echo "false"
+        exit 0
+        ;;
+    icon)
+        muted=$(pamixer --get-mute 2>/dev/null || pactl get-sink-mute @DEFAULT_SINK@ | grep -q yes && echo "true" || echo "false")
+        vol=$(pamixer --get-volume 2>/dev/null || pactl get-sink-volume @DEFAULT_SINK@ | grep -oP '\d+%' | head -1 | tr -d '%')
+        if [[ "$muted" == "true" ]]; then
+            echo "󰖁"
+        elif [[ "$vol" -gt 66 ]]; then
+            echo "󰕾"
+        elif [[ "$vol" -gt 33 ]]; then
+            echo "󰖀"
+        elif [[ "$vol" -gt 0 ]]; then
+            echo "󰕿"
+        else
+            echo "󰖁"
+        fi
+        exit 0
+        ;;
+    *)
+        echo "Usage: volume-ctl [up|down|set|toggle|get|is-muted|icon] [value]"
+        exit 1
+        ;;
+esac
+
+# Get current volume for notification
+current=$(pamixer --get-volume 2>/dev/null || pactl get-sink-volume @DEFAULT_SINK@ | grep -oP '\d+%' | head -1 | tr -d '%')
+notify-send "Volume" "${current}%" -h int:value:$current -t 1000

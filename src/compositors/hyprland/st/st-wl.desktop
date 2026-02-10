@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=st-wl
+Keywords=shell;prompt;command;commandline;cmd;terminal;
+Exec=/usr/local/bin/st-wl
+Icon=utilities-terminal
+Type=Application
+Categories=System;TerminalEmulator;
+Terminal=false
+StartupWMClass=st
+Comment=smplOS terminal

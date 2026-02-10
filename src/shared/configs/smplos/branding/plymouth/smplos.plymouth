@@ -1,0 +1,11 @@
+[Plymouth Theme]
+Name=smplOS
+Description=smplOS splash screen with LUKS password prompt
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/smplos
+ScriptFile=/usr/share/plymouth/themes/smplos/smplos.script
+ConsoleLogBackgroundColor=0x1e1e2e
+MonospaceFont=JetBrainsMono Nerd Font 11
+Font=Cantarell 11

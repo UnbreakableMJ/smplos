@@ -1,0 +1,216 @@
+/* smplOS EWW Stylesheet */
+/* Universal theme for Hyprland and DWM */
+
+/* ============================================================================
+   THEME COLORS -- defaults (catppuccin) overridden by theme-colors.scss
+   ============================================================================ */
+
+/* Fallback defaults so EWW never shows a white unstyled background */
+$theme-bg: #1e1e2e !default;
+$theme-bg-light: #45475a !default;
+$theme-bg-lighter: #585b70 !default;
+$theme-fg: #cdd6f4 !default;
+$theme-fg-dim: #a6adc8 !default;
+$theme-accent: #89b4fa !default;
+$theme-accent-alt: #f5c2e7 !default;
+$theme-green: #a6e3a1 !default;
+$theme-red: #f38ba8 !default;
+$theme-yellow: #f9e2af !default;
+$theme-orange: #f9e2af !default;
+$theme-cyan: #94e2d5 !default;
+
+/* Override with active theme colors (written by theme-set) */
+@import "theme-colors";
+
+/* Alias theme vars for use in this stylesheet */
+$bg: $theme-bg;
+$bg-light: $theme-bg-light;
+$bg-lighter: $theme-bg-lighter;
+$fg: $theme-fg;
+$fg-dim: $theme-fg-dim;
+$accent: $theme-accent;
+$accent-alt: $theme-accent-alt;
+$green: $theme-green;
+$red: $theme-red;
+$yellow: $theme-yellow;
+$orange: $theme-orange;
+$border-radius: 12px;
+$font: "JetBrains Mono Nerd Font";
+
+/* ============================================================================
+   GLOBAL
+   ============================================================================ */
+
+* {
+  all: unset;
+  font-family: $font, "Font Awesome 6 Free", sans-serif;
+  font-size: 13px;
+  color: $fg;
+}
+
+/* EWW adds a CSS class matching the window name to the root widget.
+   Explicit transparent background to support rounded corners on floating bar. */
+window {
+  background-color: transparent;
+}
+
+/* ============================================================================
+   BAR
+   ============================================================================ */
+
+.bar-content {
+  background-color: $bg;
+  border-radius: $border-radius;
+  border: 1px solid $bg-lighter;
+  padding: 4px 16px;
+}
+
+.bar-left,
+.bar-center,
+.bar-right {
+  padding: 0 8px;
+}
+
+/* Logo */
+.logo {
+  font-size: 18px;
+  color: $accent;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 200ms ease;
+}
+
+.logo:hover {
+  background-color: $bg-light;
+}
+
+/* Workspaces */
+.workspaces {
+  padding: 0 4px;
+}
+
+.workspace {
+  padding: 4px 12px;
+  border-radius: 8px;
+  color: $fg-dim;
+  transition: all 200ms ease;
+}
+
+.workspace:hover {
+  background-color: $bg-light;
+  color: $fg;
+}
+
+.workspace.active {
+  background-color: $accent;
+  color: $bg;
+  font-weight: bold;
+}
+
+/* Window title */
+.window-title {
+  color: $fg-dim;
+  padding: 0 12px;
+}
+
+/* Clock */
+.clock {
+  padding: 4px 16px;
+  background-color: $bg-light;
+  border-radius: 8px;
+}
+
+.time {
+  font-weight: bold;
+  color: $accent;
+}
+
+.date {
+  color: $fg-dim;
+  font-size: 12px;
+}
+
+/* System tray */
+.sys-tray {
+  padding: 0 8px;
+}
+
+.tray-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: all 200ms ease;
+}
+
+.tray-btn:hover {
+  background-color: $bg-light;
+}
+
+.tray-btn .icon {
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+.tray-btn .value {
+  font-size: 12px;
+  color: $fg-dim;
+}
+
+.tray-btn.volume .icon {
+  color: $accent;
+}
+
+.tray-btn.brightness .icon {
+  color: $yellow;
+}
+
+.tray-btn.battery .icon {
+  color: $green;
+}
+
+.tray-btn.wifi .icon {
+  color: $accent-alt;
+}
+
+/* System stats */
+.sys-stats {
+  padding: 4px 12px;
+  background-color: $bg-light;
+  border-radius: 8px;
+}
+
+.stat {
+  padding: 0 8px;
+}
+
+.stat .icon {
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.stat.cpu .icon {
+  color: $orange;
+}
+
+.stat.mem .icon {
+  color: $green;
+}
+
+.stat .value {
+  font-size: 11px;
+  color: $fg-dim;
+}
+
+/* Power button */
+.power-btn {
+  padding: 4px 12px;
+  border-radius: 8px;
+  color: $red;
+  font-size: 16px;
+  transition: all 200ms ease;
+}
+
+.power-btn:hover {
+  background-color: $red;
+  color: $bg;
+}
+

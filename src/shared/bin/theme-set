@@ -1,0 +1,221 @@
+#!/bin/bash
+# smplOS Theme Switcher
+# Sets the active theme and regenerates all configs
+# Usage: theme-set <theme-name>
+
+if [[ -z $1 ]]; then
+  echo "Usage: theme-set <theme-name>"
+  exit 1
+fi
+
+SMPLOS_PATH="${SMPLOS_PATH:-$HOME/.local/share/smplos}"
+CURRENT_THEME_PATH="$HOME/.config/smplos/current/theme"
+NEXT_THEME_PATH="$HOME/.config/smplos/current/next-theme"
+USER_THEMES_PATH="$HOME/.config/smplos/themes"
+STOCK_THEMES_PATH="$SMPLOS_PATH/themes"
+
+# Normalize theme name: strip markup, lowercase, spaces to hyphens
+THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+# Resolve theme path (user themes take precedence)
+if [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$USER_THEMES_PATH/$THEME_NAME"
+elif [[ -d "$STOCK_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$STOCK_THEMES_PATH/$THEME_NAME"
+else
+  echo "Theme '$THEME_NAME' does not exist"
+  exit 1
+fi
+
+# Setup clean next-theme directory (atomic swap)
+rm -rf "$NEXT_THEME_PATH"
+mkdir -p "$NEXT_THEME_PATH"
+
+# Copy all theme files (colors, configs, backgrounds, etc.)
+# Each theme ships pre-baked configs — no template expansion needed
+cp -r "$THEME_PATH/"* "$NEXT_THEME_PATH/" 2>/dev/null
+
+# Atomic swap: next-theme -> current theme
+rm -rf "$CURRENT_THEME_PATH"
+mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
+
+# Store theme name for reference
+echo "$THEME_NAME" > "$HOME/.config/smplos/current/theme.name"
+
+# Link EWW theme colors into EWW config dir
+if [[ -f "$CURRENT_THEME_PATH/eww-colors.scss" ]]; then
+  mkdir -p "$HOME/.config/eww"
+  cp "$CURRENT_THEME_PATH/eww-colors.scss" "$HOME/.config/eww/theme-colors.scss"
+fi
+
+# Link kitty theme colors
+if [[ -f "$CURRENT_THEME_PATH/kitty.conf" ]]; then
+  mkdir -p "$HOME/.config/kitty"
+  cp "$CURRENT_THEME_PATH/kitty.conf" "$HOME/.config/kitty/theme.conf"
+fi
+
+# Compositor-specific theme configs
+# Always copy if the files exist -- during install (chroot) there's no
+# WAYLAND_DISPLAY yet, but the configs must be in place for first boot.
+if [[ -f "$CURRENT_THEME_PATH/hyprland.conf" ]]; then
+  mkdir -p "$HOME/.config/hypr"
+  cp "$CURRENT_THEME_PATH/hyprland.conf" "$HOME/.config/hypr/theme.conf"
+fi
+if [[ -f "$CURRENT_THEME_PATH/hyprlock.conf" ]]; then
+  mkdir -p "$HOME/.config/hypr"
+  cp "$CURRENT_THEME_PATH/hyprlock.conf" "$HOME/.config/hypr/hyprlock-theme.conf"
+fi
+
+# Link dunst theme (concatenate core + theme colors)
+if [[ -f "$CURRENT_THEME_PATH/dunstrc.theme" ]]; then
+  mkdir -p "$HOME/.config/dunst"
+  if [[ -f "$HOME/.config/dunst/dunstrc" ]]; then
+    cat "$HOME/.config/dunst/dunstrc" "$CURRENT_THEME_PATH/dunstrc.theme" > "$HOME/.config/dunst/dunstrc.active"
+  else
+    cp "$CURRENT_THEME_PATH/dunstrc.theme" "$HOME/.config/dunst/dunstrc.active"
+  fi
+fi
+
+# Link foot theme
+if [[ -f "$CURRENT_THEME_PATH/foot.ini" ]]; then
+  mkdir -p "$HOME/.config/foot"
+  cp "$CURRENT_THEME_PATH/foot.ini" "$HOME/.config/foot/theme.ini"
+fi
+
+# Link rofi theme
+if [[ -f "$CURRENT_THEME_PATH/rofi.rasi" ]]; then
+  mkdir -p "$HOME/.config/rofi"
+  cp "$CURRENT_THEME_PATH/rofi.rasi" "$HOME/.config/rofi/smplos.rasi"
+fi
+
+# st (suckless terminal) -- colors applied at runtime via OSC escape sequences
+# No config file copy needed; theme-set-st reads colors.toml directly
+
+# Link btop theme
+if [[ -f "$CURRENT_THEME_PATH/btop.theme" ]]; then
+  mkdir -p "$HOME/.config/btop/themes"
+  cp "$CURRENT_THEME_PATH/btop.theme" "$HOME/.config/btop/themes/current.theme"
+fi
+
+# Link fish theme colors
+if [[ -f "$CURRENT_THEME_PATH/fish.theme" ]]; then
+  mkdir -p "$HOME/.config/fish"
+  cp "$CURRENT_THEME_PATH/fish.theme" "$HOME/.config/fish/theme.fish"
+fi
+
+# Set wallpaper from theme backgrounds
+theme-bg-next
+
+# =========================================================================
+# RESTART COMPONENTS — apply new theme live
+# All guarded: only runs if the app is actually present/running
+# =========================================================================
+
+# EWW bar (kill + restart so new SCSS is compiled)
+if pgrep -x eww >/dev/null; then
+  eww --config "$HOME/.config/eww" kill 2>/dev/null
+  sleep 0.3
+  bar-ctl start &
+fi
+
+# Hyprland (reload config to pick up new border colors -- runtime only)
+if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v hyprctl &>/dev/null; then
+  hyprctl reload 2>/dev/null
+fi
+
+# Kitty — SIGUSR1 triggers live config reload (no restart needed)
+if pgrep -x kitty >/dev/null; then
+  killall -SIGUSR1 kitty 2>/dev/null
+fi
+
+# st / st-wl -- apply colors via OSC escape sequences to all running instances
+theme-set-st 2>/dev/null &
+
+# Foot terminal — reload via SIGUSR1 (if running)
+if pgrep -x foot >/dev/null; then
+  killall -SIGUSR1 foot 2>/dev/null
+fi
+
+# Dunst notification daemon
+if pgrep -x dunst >/dev/null; then
+  dunstctl reload 2>/dev/null
+fi
+
+# btop — SIGUSR2 triggers config reload
+if pgrep -x btop >/dev/null; then
+  killall -USR2 btop 2>/dev/null
+fi
+
+# =========================================================================
+# APP-SPECIFIC THEMES — optional integrations
+# =========================================================================
+
+# GTK / Icon theme (GNOME settings, works for all GTK apps)
+if command -v gsettings &>/dev/null; then
+  if [[ -f "$CURRENT_THEME_PATH/light.mode" ]]; then
+    gsettings set org.gnome.desktop.interface color-scheme "prefer-light" 2>/dev/null
+    gsettings set org.gnome.desktop.interface gtk-theme "Adwaita" 2>/dev/null
+  else
+    gsettings set org.gnome.desktop.interface color-scheme "prefer-dark" 2>/dev/null
+    gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark" 2>/dev/null
+  fi
+
+  if [[ -f "$CURRENT_THEME_PATH/icons.theme" ]]; then
+    gsettings set org.gnome.desktop.interface icon-theme "$(<"$CURRENT_THEME_PATH/icons.theme")" 2>/dev/null
+  fi
+fi
+
+# Neovim — deploy lazy.nvim colorscheme spec
+if [[ -f "$CURRENT_THEME_PATH/neovim.lua" ]]; then
+  mkdir -p "$HOME/.config/nvim/lua/plugins"
+  cp "$CURRENT_THEME_PATH/neovim.lua" "$HOME/.config/nvim/lua/plugins/colorscheme.lua"
+fi
+
+# VS Code / Codium / Cursor — set workbench.colorTheme
+if [[ -f "$CURRENT_THEME_PATH/vscode.json" ]]; then
+  _set_vscode_theme() {
+    local cmd="$1" settings="$2"
+    command -v "$cmd" &>/dev/null || return 0
+
+    local theme_name extension
+    theme_name=$(jq -r '.name' "$CURRENT_THEME_PATH/vscode.json")
+    extension=$(jq -r '.extension // empty' "$CURRENT_THEME_PATH/vscode.json")
+
+    # Install extension if needed
+    if [[ -n "$extension" ]] && ! "$cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
+      "$cmd" --install-extension "$extension" >/dev/null 2>&1 || true
+    fi
+
+    # Update settings.json
+    mkdir -p "$(dirname "$settings")"
+    [[ -f "$settings" ]] || printf '{\n}\n' > "$settings"
+
+    if ! grep -q '"workbench.colorTheme"' "$settings"; then
+      sed -i -E '0,/\{/{s/\{/{ "workbench.colorTheme": "",/}' "$settings"
+    fi
+    sed -i -E "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" "$settings"
+  }
+
+  _set_vscode_theme "code" "$HOME/.config/Code/User/settings.json"
+  _set_vscode_theme "codium" "$HOME/.config/VSCodium/User/settings.json"
+  _set_vscode_theme "cursor" "$HOME/.config/Cursor/User/settings.json"
+fi
+
+# Chromium / Brave -- set browser toolbar color via managed policy
+# Derives color from colors.toml background (no separate chromium.theme file needed)
+BROWSER_BG=$(grep '^background' "$CURRENT_THEME_PATH/colors.toml" 2>/dev/null | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
+if [[ -n "$BROWSER_BG" ]]; then
+  BROWSER_POLICY="{\"BrowserThemeColor\": \"$BROWSER_BG\"}"
+  if command -v chromium &>/dev/null; then
+    sudo mkdir -p /etc/chromium/policies/managed 2>/dev/null
+    echo "$BROWSER_POLICY" | sudo tee /etc/chromium/policies/managed/color.json >/dev/null 2>&1
+    chromium --refresh-platform-policy >/dev/null 2>&1 || true
+  fi
+  if command -v brave &>/dev/null; then
+    sudo mkdir -p /etc/brave/policies/managed 2>/dev/null
+    echo "$BROWSER_POLICY" | sudo tee /etc/brave/policies/managed/color.json >/dev/null 2>&1
+    brave --refresh-platform-policy >/dev/null 2>&1 || true
+  fi
+fi
+
+echo "Theme set to: $THEME_NAME"

@@ -1,0 +1,117 @@
+#!/bin/bash
+# System Info
+# Returns system information for EWW widgets
+
+case "${1:---help}" in
+    --cpu)
+        # CPU usage percentage
+        top -bn1 | grep "Cpu(s)" | awk '{print int($2 + $4)}'
+        ;;
+    --mem)
+        # Memory usage percentage
+        free | grep Mem | awk '{printf "%.0f", $3/$2 * 100}'
+        ;;
+    --disk)
+        # Root disk usage percentage
+        df -h / | tail -1 | awk '{print $5}' | tr -d '%'
+        ;;
+    --temp)
+        # CPU temperature
+        if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
+            echo $(($(cat /sys/class/thermal/thermal_zone0/temp) / 1000))
+        else
+            echo "N/A"
+        fi
+        ;;
+    --battery)
+        # Battery percentage
+        if [[ -d /sys/class/power_supply/BAT0 ]]; then
+            cat /sys/class/power_supply/BAT0/capacity
+        elif [[ -d /sys/class/power_supply/BAT1 ]]; then
+            cat /sys/class/power_supply/BAT1/capacity
+        else
+            echo "N/A"
+        fi
+        ;;
+    --battery-status)
+        # Battery charging status
+        if [[ -d /sys/class/power_supply/BAT0 ]]; then
+            cat /sys/class/power_supply/BAT0/status
+        elif [[ -d /sys/class/power_supply/BAT1 ]]; then
+            cat /sys/class/power_supply/BAT1/status
+        else
+            echo "N/A"
+        fi
+        ;;
+    --battery-icon)
+        # Battery icon based on level and status
+        level=$(sysinfo --battery)
+        status=$(sysinfo --battery-status)
+        
+        if [[ "$level" == "N/A" ]]; then
+            echo "󰚥"
+        elif [[ "$status" == "Charging" ]]; then
+            echo "󰂄"
+        elif [[ "$level" -gt 90 ]]; then
+            echo "󰁹"
+        elif [[ "$level" -gt 70 ]]; then
+            echo "󰂀"
+        elif [[ "$level" -gt 50 ]]; then
+            echo "󰁾"
+        elif [[ "$level" -gt 30 ]]; then
+            echo "󰁼"
+        elif [[ "$level" -gt 10 ]]; then
+            echo "󰁺"
+        else
+            echo "󰂃"
+        fi
+        ;;
+    --uptime)
+        uptime -p | sed 's/up //'
+        ;;
+    --hostname)
+        hostname
+        ;;
+    --kernel)
+        uname -r
+        ;;
+    --wifi)
+        # WiFi SSID
+        nmcli -t -f active,ssid dev wifi | grep '^yes' | cut -d: -f2
+        ;;
+    --wifi-icon)
+        # WiFi icon based on signal strength
+        if nmcli -t -f active dev wifi | grep -q '^yes'; then
+            signal=$(nmcli -t -f active,signal dev wifi | grep '^yes' | cut -d: -f2)
+            if [[ "$signal" -gt 80 ]]; then
+                echo "󰤨"
+            elif [[ "$signal" -gt 60 ]]; then
+                echo "󰤥"
+            elif [[ "$signal" -gt 40 ]]; then
+                echo "󰤢"
+            elif [[ "$signal" -gt 20 ]]; then
+                echo "󰤟"
+            else
+                echo "󰤯"
+            fi
+        else
+            echo "󰤭"
+        fi
+        ;;
+    --help|*)
+        echo "Usage: sysinfo [option]"
+        echo "Options:"
+        echo "  --cpu           CPU usage percentage"
+        echo "  --mem           Memory usage percentage"
+        echo "  --disk          Disk usage percentage"
+        echo "  --temp          CPU temperature"
+        echo "  --battery       Battery percentage"
+        echo "  --battery-status Battery status"
+        echo "  --battery-icon  Battery icon"
+        echo "  --uptime        System uptime"
+        echo "  --hostname      Hostname"
+        echo "  --kernel        Kernel version"
+        echo "  --wifi          WiFi SSID"
+        echo "  --wifi-icon     WiFi signal icon"
+        ;;
+esac

@@ -1,0 +1,22 @@
+#!/bin/bash
+# smplOS Start Menu -- rofi application launcher
+# Sources: .desktop files (system + user), Flatpaks, AppImages
+# Keybinding: Super+Space | EWW bar logo button
+
+source rofi-helpers
+
+# Register AppImages as .desktop entries (fast, skips up-to-date)
+appimage-register
+
+# Ensure Flatpak .desktop files are discoverable
+for fp_dir in /var/lib/flatpak/exports/share "$HOME/.local/share/flatpak/exports/share"; do
+  [[ -d "$fp_dir" && ":$XDG_DATA_DIRS:" != *":$fp_dir:"* ]] && \
+    export XDG_DATA_DIRS="$fp_dir:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+done
+
+rofi_drun \
+  -p "" \
+  -matching fuzzy \
+  -sorting-method fzf \
+  -drun-display-format "{name}" \
+  -scroll-method 1

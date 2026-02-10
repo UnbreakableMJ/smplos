@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# smplOS VM Debug Dump
+# Collects all logs, configs, and system state → shared folder with host.
+# Usage: sudo vm-debug-dump
+
+set -euo pipefail
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+info()  { echo -e "${CYAN}▸${NC} $*"; }
+ok()    { echo -e "${GREEN}✓${NC} $*"; }
+err()   { echo -e "${RED}✗${NC} $*"; }
+header(){ echo -e "\n${BOLD}═══ $* ═══${NC}"; }
+
+[[ $EUID -ne 0 ]] && exec sudo "$0" "$@"
+
+REAL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+REAL_HOME=$(eval echo "~$REAL_USER")
+
+# ── Mount 9p share ──────────────────────────────────────────
+MOUNT_POINT="/mnt/hostshare"
+DUMP_DIR="$MOUNT_POINT/debug-$(date +%Y%m%d-%H%M%S)"
+
+header "Mounting host shared folder"
+mkdir -p "$MOUNT_POINT"
+
+if mountpoint -q "$MOUNT_POINT"; then
+    info "Already mounted"
+else
+    if mount -t 9p -o trans=virtio,version=9p2000.L hostshare "$MOUNT_POINT" 2>/dev/null; then
+        ok "Mounted 9p share"
+    else
+        err "Failed to mount 9p share — not in QEMU VM?"
+        exit 1
+    fi
+fi
+
+mkdir -p "$DUMP_DIR"
+info "Dumping to: $DUMP_DIR"
+
+dump_file() {
+    local src="$1" dest="$DUMP_DIR/$2"
+    mkdir -p "$(dirname "$dest")"
+    [[ -e "$src" ]] && cp -rL "$src" "$dest" 2>/dev/null && ok "  $2" || err "  $2"
+}
+
+dump_cmd() {
+    local label="$1"; shift
+    local dest="$DUMP_DIR/$label"
+    mkdir -p "$(dirname "$dest")"
+    "$@" > "$dest" 2>&1 && ok "  $label" || err "  $label"
+}
+
+# ── System ──────────────────────────────────────────────────
+header "System Info"
+dump_cmd "system/uname.txt"        uname -a
+dump_cmd "system/os-release.txt"   cat /etc/os-release
+dump_cmd "system/uptime.txt"       uptime
+dump_cmd "system/free.txt"         free -h
+dump_cmd "system/lsblk.txt"        lsblk -f
+dump_cmd "system/df.txt"           df -h
+dump_cmd "system/lspci.txt"        lspci
+dump_cmd "system/lsmod.txt"        lsmod
+dump_cmd "system/env.txt"          env
+
+# ── Logs ────────────────────────────────────────────────────
+header "Logs"
+dump_cmd "logs/dmesg.txt"            dmesg --color=never
+dump_cmd "logs/journal-boot.txt"     journalctl -b --no-pager
+dump_cmd "logs/journal-errors.txt"   journalctl -b -p err --no-pager
+
+# Hyprland logs — check both /tmp/hypr and $XDG_RUNTIME_DIR/hypr
+for hypr_base in /tmp/hypr "$REAL_HOME/.cache/hypr" "/run/user/$(id -u "$REAL_USER")/hypr"; do
+    for log in "$hypr_base"/*/hyprland.log; do
+        [[ -f "$log" ]] || continue
+        instance=$(basename "$(dirname "$log")")
+        dump_file "$log" "logs/hyprland-$instance.log"
+    done
+done
+
+# EWW logs — log filename includes a hash of the config dir (eww_<hash>.log)
+for eww_log in "$REAL_HOME/.cache/eww"/eww_*.log; do
+    [[ -f "$eww_log" ]] || continue
+    dump_file "$eww_log" "logs/$(basename "$eww_log")"
+done
+# Also try the simpler name just in case
+dump_file "$REAL_HOME/.cache/eww/eww.log" "logs/eww.log"
+# Capture EWW startup log (bar-ctl redirects daemon stderr here)
+dump_file "/tmp/eww-startup.log" "logs/eww-startup.log"
+# Capture theme-picker log
+dump_file "/tmp/theme-picker.log" "logs/theme-picker.log"
+
+# ── Packages ───────────────────────────────────────────────
+header "Packages"
+dump_cmd "packages/installed.txt"  pacman -Q
+dump_cmd "packages/foreign.txt"    pacman -Qm
+
+# ── Configs ─────────────────────────────────────────────────
+header "Config Files"
+dump_file "$REAL_HOME/.config/eww"           "config/eww"
+dump_file "$REAL_HOME/.config/hypr"          "config/hypr"
+dump_file "$REAL_HOME/.config/smplos"        "config/smplos"
+dump_file "$REAL_HOME/.config/kitty"         "config/kitty"
+dump_file "$REAL_HOME/.config/foot"          "config/foot"
+dump_file "$REAL_HOME/.config/dunst"          "config/dunst"
+dump_file "$REAL_HOME/.config/btop"          "config/btop"
+dump_file "$REAL_HOME/.config/fastfetch"     "config/fastfetch"
+
+# ── File Listings ───────────────────────────────────────────
+header "File Listings"
+dump_cmd "filelists/eww-config-dir.txt"      find "$REAL_HOME/.config/eww" -ls 2>/dev/null
+dump_cmd "filelists/smplos-data-dir.txt"     find "$REAL_HOME/.local/share/smplos" -maxdepth 3 -ls 2>/dev/null
+dump_cmd "filelists/home-config.txt"         ls -laR "$REAL_HOME/.config/" 2>/dev/null | head -200
+dump_cmd "filelists/usr-local-bin.txt"       ls -la /usr/local/bin/ 2>/dev/null
+
+# ── Theme State ─────────────────────────────────────────────
+header "Theme State"
+dump_cmd "theme/current-name.txt"        cat "$REAL_HOME/.config/smplos/current/theme.name"
+dump_cmd "theme/available.txt"           ls -1 "$REAL_HOME/.local/share/smplos/themes/"
+dump_file "$REAL_HOME/.config/eww/theme-colors.scss" "theme/active-eww-colors.scss"
+
+# ── Runtime ─────────────────────────────────────────────────
+header "Runtime State"
+dump_cmd "runtime/processes.txt"         ps auxf
+
+# Run user commands with proper env vars so eww/hyprctl can find their sockets
+REAL_UID=$(id -u "$REAL_USER")
+RUNDIR="/run/user/$REAL_UID"
+HYPR_SIG=$(find "$RUNDIR/hypr" -maxdepth 1 -mindepth 1 -type d -printf '%f' 2>/dev/null | head -1)
+user_cmd() {
+    su -s /bin/bash "$REAL_USER" -c "XDG_RUNTIME_DIR=$RUNDIR HYPRLAND_INSTANCE_SIGNATURE=$HYPR_SIG $*"
+}
+
+dump_cmd "runtime/eww-state.txt"         user_cmd "eww --config $REAL_HOME/.config/eww state"
+dump_cmd "runtime/eww-windows.txt"       user_cmd "eww --config $REAL_HOME/.config/eww list-windows"
+dump_cmd "runtime/eww-active.txt"        user_cmd "eww --config $REAL_HOME/.config/eww active-windows"
+
+# Compositor-specific runtime state
+if [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ -n "$HYPR_SIG" ]]; then
+  dump_cmd "runtime/hyprctl-monitors.txt"  user_cmd "hyprctl monitors"
+  dump_cmd "runtime/hyprctl-clients.txt"   user_cmd "hyprctl clients"
+  dump_cmd "runtime/hyprctl-layers.txt"    user_cmd "hyprctl layers"
+else
+  dump_cmd "runtime/xrandr.txt"            user_cmd "xrandr --verbose" 2>/dev/null
+  dump_cmd "runtime/wmctrl-list.txt"       user_cmd "wmctrl -l" 2>/dev/null
+  dump_cmd "runtime/xdpyinfo.txt"          user_cmd "xdpyinfo" 2>/dev/null
+fi
+
+dump_cmd "runtime/smplos-themes.json"    cat /tmp/smplos-themes.json
+
+# ── Scripts ─────────────────────────────────────────────────
+header "Scripts on PATH"
+mkdir -p "$DUMP_DIR/scripts"
+for cmd in theme-set theme-picker theme-list theme-current theme-bg-next bar-ctl launcher; do
+    path=$(which "$cmd" 2>/dev/null || echo "NOT FOUND")
+    echo "$cmd → $path" >> "$DUMP_DIR/scripts/locations.txt"
+    [[ -f "$path" ]] && dump_file "$path" "scripts/$cmd"
+done
+ok "  scripts/locations.txt"
+
+# ── Installer payload ──────────────────────────────────────
+header "Installer Payload"
+dump_file "/root/smplos" "installer/smplos-payload"
+
+# ── Summary ─────────────────────────────────────────────────
+FILE_COUNT=$(find "$DUMP_DIR" -type f | wc -l)
+TOTAL_SIZE=$(du -sh "$DUMP_DIR" | cut -f1)
+
+header "Done"
+echo ""
+echo -e "  ${BOLD}Files:${NC} $FILE_COUNT  ${BOLD}Size:${NC} $TOTAL_SIZE"
+echo -e "  ${BOLD}Host path:${NC} ${CYAN}./vmshare/$(basename "$DUMP_DIR")/${NC}"
+echo ""

@@ -1,0 +1,53 @@
+#!/bin/bash
+# smplOS AppImage Desktop Entry Generator
+# Scans ~/Applications for .AppImage files and creates .desktop entries
+# so they appear in rofi drun mode automatically.
+# Runs fast (skips up-to-date entries), safe to call before every launch.
+
+APPIMAGE_DIR="$HOME/Applications"
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+[[ -d "$APPIMAGE_DIR" ]] || exit 0
+mkdir -p "$DESKTOP_DIR"
+
+# Clean stale entries (AppImage was deleted)
+for desktop in "$DESKTOP_DIR"/appimage-*.desktop; do
+  [[ -f "$desktop" ]] || continue
+  exec_path=$(grep -oP '(?<=Exec=).*' "$desktop")
+  if [[ ! -x "$exec_path" ]]; then
+    rm -f "$desktop"
+  fi
+done
+
+# Generate entries for new AppImages
+for appimage in "$APPIMAGE_DIR"/*.AppImage "$APPIMAGE_DIR"/*.appimage; do
+  [[ -f "$appimage" ]] || continue
+  chmod +x "$appimage" 2>/dev/null
+
+  # Derive a clean name: My_App-1.2.3.AppImage -> My App
+  basename=$(basename "$appimage")
+  name="${basename%.[Aa]pp[Ii]mage}"       # strip extension
+  name="${name%%-[0-9]*}"                   # strip version suffix
+  name="${name%%_[0-9]*}"                   # strip version with underscore
+  name="${name//_/ }"                       # underscores to spaces
+  name="${name//-/ }"                       # hyphens to spaces
+
+  slug=$(echo "$basename" | tr '[:upper:] ' '[:lower:]-')
+  desktop_file="$DESKTOP_DIR/appimage-${slug%.appimage}.desktop"
+
+  # Skip if .desktop already exists and AppImage hasn't changed
+  if [[ -f "$desktop_file" && "$desktop_file" -nt "$appimage" ]]; then
+    continue
+  fi
+
+  cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=$name
+Exec=$appimage
+Icon=application-x-executable
+Terminal=false
+Categories=AppImage;
+Comment=AppImage application (auto-registered by smplOS)
+EOF
+done

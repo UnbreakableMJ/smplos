@@ -1,0 +1,24 @@
+#!/bin/bash
+# Lock Screen
+# Locks the screen using hyprlock (Hyprland) or i3lock (X11)
+
+# Detect display server
+if [[ -n "$WAYLAND_DISPLAY" ]]; then
+    # Wayland - use hyprlock
+    if command -v hyprlock &>/dev/null; then
+        pidof hyprlock || hyprlock &
+    else
+        notify-send "Lock" "hyprlock not installed" -u critical
+        exit 1
+    fi
+else
+    # X11 - use i3lock or similar
+    if command -v i3lock &>/dev/null; then
+        i3lock -c 1e1e2e
+    elif command -v slock &>/dev/null; then
+        slock
+    else
+        notify-send "Lock" "No lock screen available" -u critical
+        exit 1
+    fi
+fi

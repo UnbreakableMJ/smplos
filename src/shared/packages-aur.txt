@@ -1,0 +1,18 @@
+# smplOS Shared AUR Packages
+# These packages are built from the Arch User Repository
+
+# AUR helper (so users can install AUR packages after install)
+yay
+
+# EWW - Universal widget system (works on Wayland and X11)
+# Note: eww-bin has a PKGBUILD bug, using regular eww (requires Rust compilation)
+eww
+
+# Screenshot annotation tool (pre-compiled binary)
+satty-bin
+
+# Brave browser (pre-compiled binary from AUR)
+brave-bin
+
+# Hyprland plugins/extras (optional)
+# hyprland-plugins-git

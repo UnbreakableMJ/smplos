@@ -1,0 +1,56 @@
+#!/bin/bash
+# smplOS: Apply theme colors to all running st/st-wl terminals via OSC escape sequences
+# Called by theme-set after copying theme files into place.
+#
+# Uses OSC 4 (palette 0-15), OSC 10 (fg), OSC 11 (bg), OSC 12 (cursor)
+# These are standard VT escape sequences -- work on both X11 and Wayland, no dependencies.
+
+CURRENT_THEME_PATH="$HOME/.config/smplos/current/theme"
+COLORS_FILE="$CURRENT_THEME_PATH/colors.toml"
+
+[[ -f "$COLORS_FILE" ]] || exit 0
+
+# Parse a color value from colors.toml
+get_color() {
+  sed -n "s/^${1}[[:space:]]*=[[:space:]]*[\"']\(.*\)[\"']/\1/p" "$COLORS_FILE" | head -1
+}
+
+# Build the full OSC sequence payload (all colors in one string for efficiency)
+osc=""
+
+# OSC 4: set palette colors 0-15
+for i in $(seq 0 15); do
+  color=$(get_color "color${i}")
+  [[ -n "$color" ]] && osc+="\033]4;${i};${color}\033\\"
+done
+
+# OSC 10: foreground
+fg=$(get_color "foreground")
+[[ -n "$fg" ]] && osc+="\033]10;${fg}\033\\"
+
+# OSC 11: background
+bg=$(get_color "background")
+[[ -n "$bg" ]] && osc+="\033]11;${bg}\033\\"
+
+# OSC 12: cursor color
+cursor=$(get_color "cursor")
+[[ -n "$cursor" ]] && osc+="\033]12;${cursor}\033\\"
+
+[[ -z "$osc" ]] && exit 0
+
+# Send to all running st / st-wl instances by writing to their PTY
+for proc in /proc/[0-9]*/; do
+  pid="${proc#/proc/}"
+  pid="${pid%/}"
+
+  # Check if this is an st or st-wl process
+  comm=$(cat "/proc/$pid/comm" 2>/dev/null)
+  [[ "$comm" == "st" || "$comm" == "st-wl" ]] || continue
+
+  # Find the PTY master fd — st's fd/0 points to the pty slave
+  pty=$(readlink "/proc/$pid/fd/0" 2>/dev/null)
+  [[ "$pty" == /dev/pts/* ]] || continue
+
+  # Write OSC sequences to the pty
+  printf "$osc" > "$pty" 2>/dev/null
+done

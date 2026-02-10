@@ -1,0 +1,28 @@
+# smplOS Hyprland - Flatpak Applications
+# These are installed from Flathub
+
+# Browsers
+# com.google.Chrome
+# org.mozilla.firefox
+
+# Communication
+# org.signal.Signal
+# com.discordapp.Discord
+# org.telegram.desktop
+
+# Media
+# com.spotify.Client
+# com.obsproject.Studio
+
+# Development
+# com.visualstudio.code
+# com.jetbrains.IntelliJ-IDEA-Community
+
+# Office
+# org.libreoffice.LibreOffice
+# org.onlyoffice.desktopeditors
+
+# Graphics
+# org.gimp.GIMP
+# org.inkscape.Inkscape
+# org.blender.Blender

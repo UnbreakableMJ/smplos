@@ -1,0 +1,52 @@
+#!/bin/bash
+# smplOS Theme Background Cycler
+# Cycles through wallpapers in the current theme
+# Wayland: swaybg | X11: feh
+
+THEME_NAME=$(cat "$HOME/.config/smplos/current/theme.name" 2>/dev/null)
+THEME_BACKGROUNDS="$HOME/.config/smplos/current/theme/backgrounds/"
+USER_BACKGROUNDS="$HOME/.config/smplos/backgrounds/$THEME_NAME/"
+FALLBACK_BACKGROUNDS="$HOME/Pictures/Wallpapers/"
+CURRENT_BG_LINK="$HOME/.config/smplos/current/background"
+
+set_wallpaper() {
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    pkill swaybg 2>/dev/null
+    sleep 0.1
+    swaybg "$@" &
+    disown
+  elif [[ -n "${DISPLAY:-}" ]]; then
+    case "$1" in
+      -c) feh --bg-fill --image-bg "$2" /dev/null 2>/dev/null || xsetroot -solid "$2" 2>/dev/null ;;
+      -i) feh --bg-fill "$2" 2>/dev/null ;;
+    esac
+  fi
+  # No display (install/chroot) — skip wallpaper silently
+}
+
+# Gather all background images from theme + user dirs
+mapfile -d '' -t BACKGROUNDS < <(find -L "$USER_BACKGROUNDS" "$THEME_BACKGROUNDS" "$FALLBACK_BACKGROUNDS" -maxdepth 1 -type f \( -name '*.jpg' -o -name '*.png' -o -name '*.jpeg' -o -name '*.webp' \) -print0 2>/dev/null | sort -z -u)
+
+if [[ ${#BACKGROUNDS[@]} -eq 0 ]]; then
+  # No backgrounds - use solid color from theme
+  source <(grep '^background' "$HOME/.config/smplos/current/theme/colors.toml" | head -1 | sed 's/ //g')
+  set_wallpaper -c "${background:-#0a0a0a}"
+  exit 0
+fi
+
+# Find current background index
+current=$(readlink "$CURRENT_BG_LINK" 2>/dev/null)
+next_index=0
+for i in "${!BACKGROUNDS[@]}"; do
+  if [[ "${BACKGROUNDS[$i]}" == "$current" ]]; then
+    next_index=$(( (i + 1) % ${#BACKGROUNDS[@]} ))
+    break
+  fi
+done
+
+# Update symlink
+mkdir -p "$(dirname "$CURRENT_BG_LINK")"
+ln -snf "${BACKGROUNDS[$next_index]}" "$CURRENT_BG_LINK"
+
+# Set wallpaper
+set_wallpaper -i "$CURRENT_BG_LINK" -m fill

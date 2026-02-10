@@ -1,0 +1,45 @@
+#!/bin/bash
+# smplOS Theme Picker -- rofi-based theme selection
+# Lists all available themes, highlights the active one, applies on selection.
+
+SMPLOS_PATH="${SMPLOS_PATH:-$HOME/.local/share/smplos}"
+CURRENT=$(cat "$HOME/.config/smplos/current/theme.name" 2>/dev/null)
+
+# Collect theme directories (user themes override stock)
+themes=()
+while IFS= read -r dir; do
+  [[ -z "$dir" ]] && continue
+  themes+=("$dir")
+done < <({
+  find "$HOME/.config/smplos/themes" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -not -name '_*' -printf '%f\n' 2>/dev/null
+  find "$SMPLOS_PATH/themes" -mindepth 1 -maxdepth 1 -type d -not -name '_*' -printf '%f\n' 2>/dev/null
+} | sort -u)
+
+(( ${#themes[@]} )) || { notify-send "Theme Picker" "No themes found"; exit 1; }
+
+# Pretty-print: hyphens to spaces, title case
+pretty() { perl -pe 's/(^|-)([a-z])/$1\u$2/g; s/-/ /g' <<< "$1"; }
+
+# Build rofi input: "Pretty Name" per line, mark active
+active_idx=0
+lines=()
+for i in "${!themes[@]}"; do
+  name=$(pretty "${themes[$i]}")
+  [[ "${themes[$i]}" == "$CURRENT" ]] && { name="$name  (active)"; active_idx=$i; }
+  lines+=("$name")
+done
+
+# Theme file for rofi (use smplOS theme if available, else default)
+ROFI_THEME="$HOME/.config/rofi/smplos.rasi"
+rofi_args=(-dmenu -i -p "Theme" -matching fuzzy -sorting-method fzf -selected-row "$active_idx")
+[[ -f "$ROFI_THEME" ]] && rofi_args+=(-theme "$ROFI_THEME")
+
+choice=$(printf '%s\n' "${lines[@]}" | rofi "${rofi_args[@]}")
+[[ -z "$choice" ]] && exit 0
+
+# Strip the "(active)" marker if present, normalize back to dir name
+choice="${choice%  (active)}"
+dir_name=$(echo "$choice" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+# Apply theme
+theme-set "$dir_name" &
