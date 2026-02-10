@@ -45,6 +45,7 @@
 #if SCROLLBACK_PATCH || REFLOW_PATCH
 #undef HISTSIZE
 #define HISTSIZE      10000
+#define HIST_PAGESIZE 256   /* allocate history lines in pages for performance */
 #endif // SCROLLBACK_PATCH | REFLOW_PATCH
 
 #if DRAG_AND_DROP_PATCH

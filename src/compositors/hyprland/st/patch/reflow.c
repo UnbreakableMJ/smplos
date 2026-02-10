@@ -477,9 +477,8 @@ tscrollup(int top, int bot, int n, int mode)
 	if (savehist) {
 		for (i = 0; i < n; i++) {
 			term.histi = (term.histi + 1) % HISTSIZE;
+			histensure(term.histi);
 			temp = term.hist[term.histi];
-			if (!temp)
-				temp = xmalloc(term.col * sizeof(Glyph));
 			for (j = 0; j < term.col; j++)
 				tclearglyph(&temp[j], 1);
 			term.hist[term.histi] = term.line[i];
