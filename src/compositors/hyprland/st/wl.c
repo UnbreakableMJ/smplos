@@ -2390,7 +2390,7 @@ wlinit(int cols, int rows)
 	if (!FcInit())
 		die("Could not init fontconfig.\n");
 
-	usedfont = opt_font;
+	usedfont = opt_font ? opt_font : font;
 	wld.fontctx = wld_font_create_context();
 #ifdef STWL_DEBUG
 	fprintf(stderr, "[st-wl-dbg] wlinit: loading fonts (font=%s size=%d)...\n",
