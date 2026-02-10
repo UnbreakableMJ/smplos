@@ -1,51 +1,78 @@
 #!/bin/bash
-# smplOS Keybinding Help -- rofi-based searchable keybinding reference
-# Parses bindings.conf and displays all keybindings in a filterable list.
+# smplOS Keybinding Help -- searchable keybinding reference via rofi
+# Parses bindings.conf with caching for instant display.
 
 CONF="$HOME/.config/smplos/bindings.conf"
+[[ -f "$CONF" ]] || CONF="$HOME/.config/hypr/bindings.conf"
 [[ -f "$CONF" ]] || { notify-send "Keybind Help" "No bindings.conf found"; exit 1; }
 
-# Parse bindd lines: bindd = MODS, KEY, DESCRIPTION, DISPATCHER, ARGS
-lines=()
-while IFS= read -r line; do
-  [[ "$line" =~ ^bindd[[:space:]]*= ]] || continue
-  # Strip "bindd = " prefix, then split on commas
-  fields="${line#*=}"
-  IFS=',' read -r mods key desc _ <<< "$fields"
-  mods=$(echo "$mods" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
-  key=$(echo "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
-  desc=$(echo "$desc" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+CACHE="/tmp/smplos-keybinds.cache"
 
-  # Build display: "Super+Enter     Terminal"
-  # Title-case modifiers and friendly key names (display only, config untouched)
-  combo=$(echo "$mods" | tr -s ' ' '+' | sed -E 's/^\+|\+$//g')
-  [[ -n "$key" ]] && combo="${combo:+$combo+}$key"
-  combo=$(echo "$combo" | sed -E '
-    s/SUPER/Super/g; s/SHIFT/Shift/g; s/CTRL/Ctrl/g; s/ALT/Alt/g
-    s/RETURN/Enter/g; s/SPACE/Space/g; s/ESCAPE/Esc/g
-    s/BackSpace/Backspace/g; s/DELETE/Delete/g; s/TAB/Tab/g
-    s/PRINT/Print/g
-    s/LEFT/Left/g; s/RIGHT/Right/g; s/UP/Up/g; s/DOWN/Down/g
-    s/code:10/1/g; s/code:11/2/g; s/code:12/3/g; s/code:13/4/g; s/code:14/5/g
-    s/code:15/6/g; s/code:16/7/g; s/code:17/8/g; s/code:18/9/g; s/code:19/0/g
-    s/XF86AudioRaiseVolume/Vol Up/g; s/XF86AudioLowerVolume/Vol Down/g
-    s/XF86AudioMute/Mute/g; s/XF86AudioMicMute/Mic Mute/g
-    s/XF86MonBrightnessUp/Bright Up/g; s/XF86MonBrightnessDown/Bright Down/g
-    s/XF86AudioPlay/Play/g; s/XF86AudioPause/Pause/g
-    s/XF86AudioNext/Next Track/g; s/XF86AudioPrev/Prev Track/g
-    s/code:20/-/g; s/code:21/=/g
-    s/BACKSpace/Backspace/g; s/COMMA/,/g
-    s/mouse_down/Scroll Down/g; s/mouse_up/Scroll Up/g
-  ')
-  lines+=("$(printf '%-24s %s' "$combo" "$desc")")
-done < "$CONF"
+# Rebuild cache only when bindings.conf changes
+if [[ ! -f "$CACHE" ]] || [[ "$CONF" -nt "$CACHE" ]]; then
+  awk -F, '
+  /^# ===/ { next }
+  /^# [A-Z][A-Z ]/ {
+    sub(/^# */, "")
+    gsub(/[[:space:]]+$/, "")
+    section = $0
+    next
+  }
+  /^bind[a-z]*d[[:space:]]*=/ {
+    sub(/^bind[a-z]*d[[:space:]]*=[[:space:]]*/, "")
 
-(( ${#lines[@]} )) || { notify-send "Keybind Help" "No keybindings found"; exit 1; }
+    mods = $1; key = $2; desc = $3
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", mods)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
+
+    gsub(/ /, "+", mods); gsub(/^\+|\+$/, "", mods)
+    combo = (mods != "" && key != "") ? mods "+" key : (mods != "" ? mods : key)
+
+    # Friendly names
+    gsub(/SUPER/, "Super", combo); gsub(/SHIFT/, "Shift", combo)
+    gsub(/CTRL/, "Ctrl", combo); gsub(/ALT/, "Alt", combo)
+    gsub(/RETURN/, "Enter", combo); gsub(/SPACE/, "Space", combo)
+    gsub(/ESCAPE/, "Esc", combo); gsub(/PRINT/, "Print", combo)
+    gsub(/LEFT/, "Left", combo); gsub(/RIGHT/, "Right", combo)
+    gsub(/UP/, "Up", combo); gsub(/DOWN/, "Down", combo)
+    gsub(/BACKSPACE/, "Backspace", combo); gsub(/BackSpace/, "Backspace", combo)
+    gsub(/DELETE/, "Delete", combo); gsub(/COMMA/, ",", combo)
+    gsub(/TAB/, "Tab", combo)
+    gsub(/code:10/, "1", combo); gsub(/code:11/, "2", combo)
+    gsub(/code:12/, "3", combo); gsub(/code:13/, "4", combo)
+    gsub(/code:14/, "5", combo); gsub(/code:15/, "6", combo)
+    gsub(/code:16/, "7", combo); gsub(/code:17/, "8", combo)
+    gsub(/code:18/, "9", combo); gsub(/code:19/, "0", combo)
+    gsub(/code:20/, "-", combo); gsub(/code:21/, "=", combo)
+    gsub(/XF86AudioRaiseVolume/, "Vol Up", combo)
+    gsub(/XF86AudioLowerVolume/, "Vol Down", combo)
+    gsub(/XF86AudioMute/, "Mute", combo)
+    gsub(/XF86AudioMicMute/, "Mic Mute", combo)
+    gsub(/XF86MonBrightnessUp/, "Bright Up", combo)
+    gsub(/XF86MonBrightnessDown/, "Bright Down", combo)
+    gsub(/XF86AudioPlay/, "Play", combo); gsub(/XF86AudioPause/, "Pause", combo)
+    gsub(/XF86AudioNext/, "Next Track", combo); gsub(/XF86AudioPrev/, "Prev Track", combo)
+    gsub(/mouse_down/, "Scroll Down", combo); gsub(/mouse_up/, "Scroll Up", combo)
+    gsub(/mouse:272/, "LMB", combo); gsub(/mouse:273/, "RMB", combo)
+
+    # Print section header if new category
+    if (section != "" && section != last_section) {
+      if (NR > 1) print ""
+      printf "--- %s ---\n", section
+      last_section = section
+    }
+    printf "%-28s %s\n", combo, desc
+  }
+  ' "$CONF" > "$CACHE"
+fi
+
+[[ -s "$CACHE" ]] || { notify-send "Keybind Help" "No keybindings found"; exit 1; }
 
 # Show in rofi (read-only display, no action on selection)
 ROFI_THEME="$HOME/.config/rofi/smplos.rasi"
 rofi_args=(-dmenu -i -p "Keys" -matching fuzzy -sorting-method fzf)
-rofi_args+=(-mesg "Keybindings reference  --  type to filter")
+rofi_args+=(-mesg "Super+K  Keybindings  --  type to filter")
 [[ -f "$ROFI_THEME" ]] && rofi_args+=(-theme "$ROFI_THEME")
 
-printf '%s\n' "${lines[@]}" | rofi "${rofi_args[@]}" >/dev/null 2>&1
+rofi "${rofi_args[@]}" < "$CACHE" >/dev/null 2>&1
