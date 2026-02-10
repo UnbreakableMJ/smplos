@@ -1451,6 +1451,8 @@ tscrollup(int orig, int n)
 		for (i = 0; i < n; i++) {
 			term.histi = (term.histi + 1) % HISTSIZE;
 			temp = term.hist[term.histi];
+			if (!temp)
+				temp = xmalloc(term.col * sizeof(Glyph));
 			term.hist[term.histi] = term.line[orig+i];
 			term.line[orig+i] = temp;
 		}
@@ -2418,8 +2420,10 @@ csihandle(void)
 				term.histn = 0;
 				Glyph g=(Glyph){.bg=term.c.attr.bg, .fg=term.c.attr.fg, .u=' ', .mode=0};
 				for (int i = 0; i < HISTSIZE; i++) {
-					for (int j = 0; j < maxcol; j++)
-						term.hist[i][j] = g;
+					if (term.hist[i]) {
+						for (int j = 0; j < maxcol; j++)
+							term.hist[i][j] = g;
+					}
 				}
 			}
 			#endif // SCROLLBACK_PATCH
@@ -3817,9 +3821,11 @@ tresize(int col, int row)
 	#if SCROLLBACK_PATCH
 	Glyph gc=(Glyph){.bg=term.c.attr.bg, .fg=term.c.attr.fg, .u=' ', .mode=0};
 	for (i = 0; i < HISTSIZE; i++) {
-		term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
-		for (j = mincol; j < col; j++)
-			term.hist[i][j] = gc;
+		if (term.hist[i]) {
+			term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
+			for (j = mincol; j < col; j++)
+				term.hist[i][j] = gc;
+		}
 	}
 	#endif // SCROLLBACK_PATCH
 
