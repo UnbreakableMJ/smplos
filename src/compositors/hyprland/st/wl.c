@@ -32,31 +32,6 @@ char *argv0;
 
 static char *font = "JetBrainsMono Nerd Font:size=14:antialias=true:hintstyle=hintfull";
 
-static FILE *repeatlog;
-static int repeatlog_inited;
-
-static void
-repeatlog_open(void)
-{
-	if (repeatlog_inited)
-		return;
-	repeatlog_inited = 1;
-	// Force enable debug logging for diagnosis
-	repeatlog = fopen("/tmp/st-repeat.log", "a");
-	if (repeatlog)
-		setvbuf(repeatlog, NULL, _IOLBF, 0);
-}
-
-static void
-repeat_log(const char *tag, long a, long b, long c)
-{
-	if (!repeatlog_inited)
-		repeatlog_open();
-	if (!repeatlog)
-		return;
-	fprintf(repeatlog, "%s a=%ld b=%ld c=%ld\n", tag, a, b, c);
-}
-
 #if SIXEL_PATCH
 #include "sixel.h"
 #endif // SIXEL_PATCH
@@ -170,6 +145,16 @@ typedef struct {
 	struct timespec last;
 } Repeat;
 
+/* For repeating shortcut functions (e.g., PageUp/PageDown scroll) */
+typedef struct {
+	void (*func)(const Arg *);
+	Arg arg;
+	uint32_t key;
+	bool active;
+	bool started;
+	struct timespec last;
+} RepeatFunc;
+
 static int evcol(int);
 static int evrow(int);
 
@@ -251,6 +236,7 @@ TermWindow win;
 static WLD wld;
 static Cursor cursor;
 static Repeat repeat;
+static RepeatFunc repeatfunc;  /* For repeating shortcut functions */
 static int oldx, oldy;
 
 #if CSI_22_23_PATCH
@@ -511,12 +497,27 @@ void
 ptrmotion(void *data, struct wl_pointer * pointer, uint32_t serial,
 		wl_fixed_t x, wl_fixed_t y)
 {
+	int py_raw;
+
 	wl.px = wl_fixed_to_int(x);
 	wl.py = wl_fixed_to_int(y);
 
 	if (IS_SET(MODE_MOUSE) && !(wl.xkb.mods & forceselmod)) {
 		wlmousereportmotion(x, y);
 		return;
+	}
+
+	/* Auto-scroll when dragging past edges */
+	if (oldbutton == BTN_LEFT && selactive()) {
+		#if ANYSIZE_PATCH
+		py_raw = wl.py - win.vborderpx;
+		#else
+		py_raw = wl.py - borderpx;
+		#endif
+		if (py_raw < 0)
+			kscrollup_nosel(1);
+		else if (py_raw >= win.th)
+			kscrolldown_nosel(1);
 	}
 
 	mousesel(0);
@@ -581,6 +582,15 @@ ptraxis(void * data, struct wl_pointer * pointer, uint32_t time, uint32_t axis,
 		return;
 	}
 
+	/* Scroll without clearing active selection */
+	if (selactive() && axis == AXIS_VERTICAL && screen == S_PRI) {
+		if (dir > 0)
+			kscrolldown_nosel(3);
+		else
+			kscrollup_nosel(3);
+		return;
+	}
+
 	for (Axiskey *ak = ashortcuts; ak < ashortcuts + LEN(ashortcuts); ak++) {
 		if (axis == ak->axis && dir == ak->dir
         && (!ak->screen || (ak->screen == screen))
@@ -596,6 +606,7 @@ mousesel(int done)
 {
 	int type, seltype = SEL_REGULAR;
 	uint state = wl.xkb.mods & ~forceselmod;
+	char *seltext;
 
 	for (type = 1; type < LEN(selmasks); ++type) {
 		if (match(selmasks[type], state)) {
@@ -605,8 +616,11 @@ mousesel(int done)
 	}
 
 	selextend(evcol(wl.px), evrow(wl.py), seltype, done);
-	if (done)
-		setsel(getsel(), wl.globalserial);
+	if (done) {
+		seltext = getsel();
+		if (seltext)
+			setsel(seltext, wl.globalserial);
+	}
 }
 
 
@@ -627,6 +641,10 @@ setsel(char *str, uint32_t serial)
 	wl_data_source_offer(wlsel.source, "STRING");
 	wl_data_source_offer(wlsel.source, "UTF8_STRING");
 	wl_data_device_set_selection(wl.datadev, wlsel.source, serial);
+	/* Two roundtrips needed: the first processes the selection change,
+	 * the second ensures any cancelled callbacks for old sources complete
+	 * before we potentially create another new source. */
+	wl_display_roundtrip(wl.dpy);
 	wl_display_roundtrip(wl.dpy);
 }
 
@@ -915,6 +933,8 @@ kbdkey(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time,
 	if (state == WL_KEYBOARD_KEY_STATE_RELEASED) {
 		if (repeat.key == key)
 			repeat.len = 0;
+		if (repeatfunc.key == key)
+			repeatfunc.active = false;
 		return;
 	}
 
@@ -935,6 +955,17 @@ kbdkey(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time,
 	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
 		if (ksym == bp->keysym && match(bp->mod, wl.xkb.mods)) {
 			bp->func(&(bp->arg));
+			/* Set up function repeat for PageUp/PageDown */
+			if (ksym == XKB_KEY_Page_Up || ksym == XKB_KEY_Page_Down ||
+			    ksym == XKB_KEY_Prior || ksym == XKB_KEY_Next) {
+				repeatfunc.func = bp->func;
+				repeatfunc.arg = bp->arg;
+				repeatfunc.key = key;
+				repeatfunc.active = true;
+				repeatfunc.started = false;
+				clock_gettime(CLOCK_MONOTONIC, &repeatfunc.last);
+				repeat.len = 0;  /* Disable string repeat */
+			}
 			return;
 		}
 	}
@@ -981,7 +1012,6 @@ send:
 	ttywrite(str, len, 1);
 	clock_gettime(CLOCK_MONOTONIC, &repeat.last);
 	wlneeddraw();
-	repeat_log("keydown", (long)key, (long)len, 0);
 }
 
 void
@@ -2314,7 +2344,8 @@ void
 datasrcsend(void *data, struct wl_data_source *source, const char *mimetype,
 		int32_t fd)
 {
-	if (wlsel.primary)
+	/* Only send data if this is still our active source */
+	if (wlsel.source == source && wlsel.primary)
 		write(fd, wlsel.primary, strlen(wlsel.primary));
 	close(fd);
 }
@@ -2545,8 +2576,6 @@ run(void)
 
 		drawtimeout.tv_nsec = 1000000 * timeout;
 
-		if (repeat.len > 0) repeat_log("pselect_in", timeout, 0, 0);
-
 		if (pselect(MAX(wlfd, ttyfd)+1, &rfd, NULL, NULL, &drawtimeout, NULL) < 0) {
 			if (errno == EINTR)
 				continue;
@@ -2611,7 +2640,6 @@ run(void)
 				 * event loop handle drawing via wl.needdraw.
 				 * This avoids blocking on pselect or frame callbacks
 				 * when the system or shell is under load. */
-				repeat_log("repeat", timeDiff, (long)keyrepeatinterval, (long)keyrepeatdelay);
 				wlneeddraw();
 
 				/* Use standard select timeout logic next iteration */
@@ -2622,6 +2650,43 @@ run(void)
 			/* During the initial delay, adjust timeout but fall
 			 * through to the normal draw path so the first
 			 * keypress result is rendered normally. */
+		}
+
+		/* Function repeat: for shortcuts like PageUp/PageDown scroll */
+		if (repeatfunc.active)
+		{
+			long timeDiff = TIMEDIFF(now, repeatfunc.last);
+			int did_repeat = 0;
+
+			if (!repeatfunc.started)
+			{
+				if (timeDiff >= keyrepeatdelay)
+				{
+					repeatfunc.started = true;
+					repeatfunc.last = now;
+					repeatfunc.func(&repeatfunc.arg);
+					did_repeat = 1;
+				}
+			}
+			else if (timeDiff >= keyrepeatinterval)
+			{
+				repeatfunc.last = now;
+				repeatfunc.func(&repeatfunc.arg);
+				did_repeat = 1;
+			}
+
+			if (did_repeat)
+			{
+				/* Force immediate draw if no frame callback pending.
+				 * Unlike string repeat, scroll has no tty activity
+				 * so we must draw explicitly. */
+				if (!wl.framecb) {
+					draw();
+					wl_display_flush(wl.dpy);
+				}
+				timeout = keyrepeatinterval;
+				continue;
+			}
 		}
 
 		/*

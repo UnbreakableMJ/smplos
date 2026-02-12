@@ -47,7 +47,3 @@ case "$action" in
         exit 1
         ;;
 esac
-
-# Get current volume for notification
-current=$(pamixer --get-volume 2>/dev/null || pactl get-sink-volume @DEFAULT_SINK@ | grep -oP '\d+%' | head -1 | tr -d '%')
-notify-send "Volume" "${current}%" -h int:value:$current -t 1000

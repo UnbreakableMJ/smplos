@@ -1,0 +1,71 @@
+#!/bin/bash
+# Open the app that sent a notification
+# Usage: notif-open <desktop_entry> <appname>
+# Tries: 1) focus existing window  2) launch via desktop entry  3) launch by name
+
+desktop_entry="${1:-}"
+appname="${2:-}"
+
+# Try to focus an existing window by class/title matching
+focus_window() {
+  local pattern="$1"
+  [[ -z "$pattern" ]] && return 1
+  # hyprctl clients JSON → find matching window → focus it
+  local addr
+  addr=$(hyprctl clients -j 2>/dev/null | jq -r --arg p "$pattern" '
+    [.[] | select(
+      (.class // "" | ascii_downcase | test($p; "i")) or
+      (.initialClass // "" | ascii_downcase | test($p; "i")) or
+      (.title // "" | ascii_downcase | test($p; "i"))
+    )] | first | .address // empty
+  ' 2>/dev/null)
+
+  if [[ -n "$addr" ]]; then
+    hyprctl dispatch focuswindow "address:$addr" &>/dev/null
+    return 0
+  fi
+  return 1
+}
+
+# Try to launch via .desktop file
+launch_desktop() {
+  local entry="$1"
+  [[ -z "$entry" ]] && return 1
+
+  # Search for the .desktop file
+  local desktop_file=""
+  for dir in /usr/share/applications ~/.local/share/applications /var/lib/flatpak/exports/share/applications; do
+    if [[ -f "$dir/${entry}.desktop" ]]; then
+      desktop_file="$dir/${entry}.desktop"
+      break
+    fi
+  done
+
+  if [[ -n "$desktop_file" ]]; then
+    gtk-launch "$(basename "$desktop_file")" &>/dev/null &
+    return 0
+  fi
+  return 1
+}
+
+# Strategy 1: Focus existing window by desktop_entry or appname
+if focus_window "$desktop_entry"; then
+  exit 0
+fi
+if [[ "$appname" != "$desktop_entry" ]] && focus_window "$appname"; then
+  exit 0
+fi
+
+# Strategy 2: Launch via .desktop file
+if launch_desktop "$desktop_entry"; then
+  exit 0
+fi
+
+# Strategy 3: Try running appname directly (lowercase)
+app_lower=$(echo "$appname" | tr '[:upper:]' '[:lower:]')
+if command -v "$app_lower" &>/dev/null; then
+  "$app_lower" &>/dev/null &
+  exit 0
+fi
+
+notify-send "Notification Hub" "Could not open $appname" -t 2000

@@ -81,6 +81,10 @@ networkmanager
 network-manager-applet
 bluez
 bluez-utils
+blueman
+
+# ── Display Extras ───────────────────────────────────────────
+gammastep
 
 # ── Bootloaders ──────────────────────────────────────────────
 grub

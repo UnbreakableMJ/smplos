@@ -1,0 +1,18 @@
+#!/bin/bash
+# Toggle Do Not Disturb (dunst pause/unpause)
+# Usage: dnd-toggle
+
+if ! command -v dunstctl &>/dev/null; then
+  notify-send "DND" "dunst not found" -t 2000
+  exit 1
+fi
+
+dunstctl set-paused toggle
+
+if [[ "$(dunstctl is-paused)" == "true" ]]; then
+  # DND is now ON -- this notification won't show (dunst is paused)
+  # but it will appear in history when DND is turned off
+  notify-send "Do Not Disturb" "Enabled - notifications silenced" -t 1500
+else
+  notify-send "Do Not Disturb" "Disabled - notifications active" -t 1500
+fi

@@ -1,0 +1,23 @@
+#!/bin/bash
+# Toggle airplane mode (all radios off/on via rfkill)
+# Usage: airplane-toggle
+
+if ! command -v rfkill &>/dev/null; then
+  notify-send "Airplane Mode" "rfkill not found" -t 2000
+  exit 1
+fi
+
+# Check if any radio is unblocked
+any_on=$(rfkill -o SOFT -n list 2>/dev/null | grep -ci "unblocked")
+
+if [[ "$any_on" -gt 0 ]]; then
+  rfkill block all 2>/dev/null || sudo -n rfkill block all 2>/dev/null
+  notify-send "Airplane Mode" "All radios disabled" -t 1500
+else
+  rfkill unblock all 2>/dev/null || sudo -n rfkill unblock all 2>/dev/null
+  # Re-enable NM radios
+  command -v nmcli &>/dev/null && {
+    nmcli radio wifi on 2>/dev/null
+  }
+  notify-send "Airplane Mode" "Radios re-enabled" -t 1500
+fi

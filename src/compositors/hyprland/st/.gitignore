@@ -1,10 +1,5 @@
-*.o
+config.h
+patches.h
 st-wl
-xdg-shell-protocol.c
-compile_commands.json
-.cache
-xdg-shell-client-protocol.h
-xdg-decoration-protocol.c
-xdg-decoration-protocol.h
-options
-.deps
+*.o
+*.tar.gz

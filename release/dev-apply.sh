@@ -148,6 +148,20 @@ if [[ -d "$SHARE/themes" && "$(ls -A "$SHARE/themes" 2>/dev/null)" ]]; then
     log "  done"
 fi
 
+# ── st-wl terminal ─────────────────────────────────────────
+if [[ -f "$SHARE/st/st-wl" ]]; then
+    log "Installing st-wl binary..."
+    cp "$SHARE/st/st-wl" /usr/local/bin/st-wl
+    chmod +x /usr/local/bin/st-wl
+    log "  done"
+fi
+
+# ── Ensure essential services ───────────────────────────────
+systemctl is-active --quiet NetworkManager 2>/dev/null || {
+    log "Starting NetworkManager..."
+    systemctl start NetworkManager 2>/dev/null && log "  NetworkManager started" || warn "  Failed to start NetworkManager"
+}
+
 # ── Restart services ────────────────────────────────────────
 
 # Re-apply current theme (copies theme-colors.scss, bakes SVG icons, etc.)

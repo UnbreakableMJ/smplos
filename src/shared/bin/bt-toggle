@@ -1,0 +1,25 @@
+#!/bin/bash
+# Toggle Bluetooth radio on/off using rfkill (true RF silence)
+# Usage: bt-toggle
+
+if ! command -v rfkill &>/dev/null; then
+  notify-send "Bluetooth" "rfkill not found" -t 2000
+  exit 1
+fi
+
+# rfkill may need root -- use sudo -n (non-interactive, never hangs)
+RFKILL="rfkill"
+if ! rfkill list bluetooth &>/dev/null 2>&1; then
+  RFKILL="sudo -n rfkill"
+fi
+
+if rfkill -o SOFT -n list bluetooth 2>/dev/null | grep -qi blocked; then
+  $RFKILL unblock bluetooth 2>/dev/null
+  sleep 1
+  command -v bluetoothctl &>/dev/null && bluetoothctl power on 2>/dev/null
+  notify-send "Bluetooth" "Radio enabled" -t 1500
+else
+  command -v bluetoothctl &>/dev/null && bluetoothctl power off 2>/dev/null
+  $RFKILL block bluetooth 2>/dev/null
+  notify-send "Bluetooth" "Radio disabled" -t 1500
+fi

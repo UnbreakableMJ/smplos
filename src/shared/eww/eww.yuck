@@ -1,6 +1,10 @@
 ;; smplOS EWW Configuration
 ;; Universal bar for Hyprland (Wayland) and DWM (X11)
 
+;; Widget panels
+(include "./quick-settings.yuck")
+(include "./notification-hub.yuck")
+
 ;; ============================================================================
 ;; VARIABLES
 ;; ============================================================================
@@ -30,10 +34,10 @@
 
 ;; Network (event-driven via nmcli monitor)
 ;; display_icon = absolute path to pre-baked SVG (colors from theme-set)
-(deflisten net-data :initial '{"wired":"no","wired_icon":"icons/status/network-wired-disconnected.svg","display_icon":"icons/status/network-wired-disconnected.svg","wifi_on":"no","wifi_icon":"\u{f092e}","ssid":"","online":"no","vpn":"off"}' `scripts/network-listener.sh`)
+(deflisten net-data :initial '{"wired":"no","wired_icon":"icons/status/network-wired-disconnected.svg","display_icon":"icons/status/network-wired-disconnected.svg","wifi_on":"no","wifi_icon":"󰤮","ssid":"","online":"no","vpn":"off","wifi_available":"yes","wired_available":"yes"}' `scripts/network-listener.sh`)
 
 ;; Bluetooth
-(deflisten bt-data :initial '{"powered":"off","connected":"no","device":"","icon":"󰂲"}' `scripts/bluetooth-listener.sh`)
+(deflisten bt-data :initial '{"powered":"off","connected":"no","device":"","icon":"󰂲","available":"yes"}' `scripts/bluetooth-listener.sh`)
 
 ;; Notifications
 (deflisten notif-data :initial '{"count":"0","icon":"󰂜","paused":"no"}' `scripts/notification-listener.sh`)
@@ -105,16 +109,16 @@
 ;; Volume (icon-only, varies with level)
 (defwidget tray-volume []
   (eventbox :onscroll "volume-ctl {} 5"
-    (button :class "tray-btn volume"
-            :onclick "volume-ctl toggle"
+    (button :class "tray-volume"
+            :onclick "popup-toggle quick-settings"
             :onrightclick "pavucontrol &"
             :tooltip "Volume: ${volume-data.level}%"
       (label :class "icon" :text {volume-data.icon}))))
 
 ;; Network status icon (SVG, colors baked by theme-set -- no :fill-svg needed)
 (defwidget tray-internet []
-  (button :class "tray-btn internet"
-          :onclick "nm-connection-editor &"
+  (button :class "tray-internet"
+          :onclick "popup-toggle quick-settings"
           :tooltip {net-data.vpn == "on" ? "VPN active" :
                     net-data.wired == "yes" ? "Wired connected" :
                     net-data.online == "yes" ? "Online" : "Disconnected"}
@@ -123,30 +127,30 @@
 
 ;; WiFi (signal bars icon, crossed out if off)
 (defwidget tray-wifi []
-  (button :class "tray-btn wifi"
-          :onclick "nm-connection-editor &"
+  (button :class "tray-wifi"
+          :onclick "popup-toggle quick-settings"
           :tooltip {net-data.ssid ?: (net-data.wifi_on == "yes" ? "Not connected" : "WiFi off")}
     (label :class "icon" :text {net-data.wifi_icon})))
 
 ;; Bluetooth (icon, crossed out if off)
 (defwidget tray-bluetooth []
-  (button :class "tray-btn bluetooth"
-          :onclick "bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' && bluetoothctl power off || bluetoothctl power on"
+  (button :class "tray-bluetooth"
+          :onclick "popup-toggle quick-settings"
           :tooltip {bt-data.connected == "yes" ? bt-data.device :
                     bt-data.powered == "on" ? "Bluetooth on" : "Bluetooth off"}
     (label :class "icon" :text {bt-data.icon})))
 
 ;; Notifications bell (empty=none, filled=has notifications)
 (defwidget tray-notifications []
-  (button :class "tray-btn notifications ${notif-data.count != '0' ? 'has-notifs' : ''}"
-          :onclick "dunstctl history-pop"
-          :onrightclick "dunstctl close-all"
+  (button :class "tray-notifications ${notif-data.count != '0' ? 'has-notifs' : ''}"
+          :onclick "popup-toggle notification-hub"
+          :onrightclick "dunstctl history-clear"
           :tooltip {notif-data.count != "0" ? "${notif-data.count} notifications" : "No notifications"}
     (label :class "icon" :text {notif-data.icon})))
 
 ;; Clock + calendar toggle
 (defwidget tray-clock []
-  (button :class "tray-btn clock-btn"
+  (button :class "tray-clock"
           :onclick "popup-toggle calendar-popup"
     (label :class "time" :text time)))
 
@@ -214,7 +218,7 @@
 (defwindow calendar-popup
   :monitor 0
   :namespace "eww-calendar-popup"
-  :geometry (geometry :x "-4px" :y "38px" :width "280px" :height "280px" :anchor "bottom right")
+  :geometry (geometry :x "7px" :y "2px" :width "280px" :height "280px" :anchor "bottom right")
   :stacking "overlay"
   :focusable false
   (calendar-widget))

@@ -20,6 +20,22 @@ ICON_VPN="$ICON_DIR/network-vpn.svg"
 # Check if NetworkManager is running (used to pick detection strategy)
 nm_running() { nmcli -t general status &>/dev/null; }
 
+# Hardware availability (detected once at startup -- doesn't change at runtime)
+if nm_running; then
+  _devtypes=$(nmcli -t -f TYPE device 2>/dev/null)
+  if echo "$_devtypes" | grep -qi wifi; then HAS_WIFI=yes; else HAS_WIFI=no; fi
+  if echo "$_devtypes" | grep -qi ethernet; then HAS_WIRED=yes; else HAS_WIRED=no; fi
+else
+  HAS_WIFI=no
+  for d in /sys/class/net/*/wireless; do [[ -d "$d" ]] && { HAS_WIFI=yes; break; }; done
+  HAS_WIRED=no
+  for d in /sys/class/net/*/device; do
+    dev=$(basename "$(dirname "$d")")
+    [[ "$dev" == "lo" || -d "/sys/class/net/$dev/wireless" ]] && continue
+    HAS_WIRED=yes; break
+  done
+fi
+
 emit() {
   local wired="no" wired_icon="$ICON_OFFLINE"
   local wifi_on="no" wifi_icon=$'\U000f092e'
@@ -27,13 +43,13 @@ emit() {
 
   if nm_running; then
     # ── NetworkManager path ──────────────────────────────────────────
-    local eth_state
-    eth_state=$(nmcli -t -f type,state device 2>/dev/null \
-      | grep '^ethernet' | head -1 | cut -d: -f2)
-
-    if [[ "$eth_state" == "connected" ]]; then
-      wired="yes"; wired_icon="$ICON_ONLINE"
-    fi
+    # Wired: check ALL ethernet devices, connected if any is
+    while IFS=: read -r type state _; do
+      if [[ "${type,,}" == "ethernet" && "$state" == "connected" ]]; then
+        wired="yes"; wired_icon="$ICON_ONLINE"
+        break
+      fi
+    done < <(nmcli -t -f TYPE,STATE device 2>/dev/null)
 
     # WiFi
     local wifi_hw
@@ -97,8 +113,8 @@ emit() {
   local display_icon="$wired_icon"
   [[ "$vpn" == "on" ]] && display_icon="$ICON_VPN"
 
-  printf '{"wired":"%s","wired_icon":"%s","display_icon":"%s","wifi_on":"%s","wifi_icon":"%s","ssid":"%s","online":"%s","vpn":"%s"}\n' \
-    "$wired" "$wired_icon" "$display_icon" "$wifi_on" "$wifi_icon" "$ssid" "$online" "$vpn"
+  printf '{"wired":"%s","wired_icon":"%s","display_icon":"%s","wifi_on":"%s","wifi_icon":"%s","ssid":"%s","online":"%s","vpn":"%s","wifi_available":"%s","wired_available":"%s"}\n' \
+    "$wired" "$wired_icon" "$display_icon" "$wifi_on" "$wifi_icon" "$ssid" "$online" "$vpn" "$HAS_WIFI" "$HAS_WIRED"
 }
 
 emit

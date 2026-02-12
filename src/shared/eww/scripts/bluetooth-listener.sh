@@ -2,11 +2,18 @@
 # EWW bluetooth listener
 # Output: single-line JSON {"powered","connected","device","icon"}
 
+# Hardware availability (detected once at startup)
+if command -v bluetoothctl &>/dev/null && bluetoothctl show &>/dev/null; then
+  HAS_BT="yes"
+else
+  HAS_BT="no"
+fi
+
 emit() {
   local powered connected device icon
 
   if ! command -v bluetoothctl &>/dev/null; then
-    echo '{"powered":"off","connected":"no","device":"","icon":"󰂲"}'
+    printf '{"powered":"off","connected":"no","device":"","icon":"󰂲","available":"%s"}\n' "$HAS_BT"
     return
   fi
 
@@ -15,7 +22,7 @@ emit() {
     powered="on"
   else
     powered="off"
-    echo '{"powered":"off","connected":"no","device":"","icon":"󰂲"}'
+    printf '{"powered":"off","connected":"no","device":"","icon":"󰂲","available":"%s"}\n' "$HAS_BT"
     return
   fi
 
@@ -27,8 +34,8 @@ emit() {
     connected="no"; icon="󰂯"
   fi
 
-  printf '{"powered":"%s","connected":"%s","device":"%s","icon":"%s"}\n' \
-    "$powered" "$connected" "$device" "$icon"
+  printf '{"powered":"%s","connected":"%s","device":"%s","icon":"%s","available":"%s"}\n' \
+    "$powered" "$connected" "$device" "$icon" "$HAS_BT"
 }
 
 emit

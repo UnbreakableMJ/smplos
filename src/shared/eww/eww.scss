@@ -50,6 +50,24 @@ $font: "JetBrains Mono Nerd Font";
   color: $fg;
 }
 
+/* ============================================================================
+   TOOLTIPS
+   ============================================================================ */
+
+tooltip {
+  background-color: rgba(darken($bg, 5%), 0.92);
+  border: 1px solid rgba($bg-lighter, 0.35);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: $fg;
+  font-size: 11px;
+}
+
+tooltip * {
+  background-color: transparent;
+  color: $fg;
+}
+
 /* EWW adds a CSS class matching the window name to the root widget.
    Explicit transparent background to support rounded corners on floating bar. */
 window {
@@ -152,32 +170,43 @@ window {
   padding: 0 4px;
 }
 
-.tray-btn {
+.tray-volume,
+.tray-wifi,
+.tray-bluetooth,
+.tray-internet,
+.tray-notifications,
+.tray-clock {
   padding: 2px 6px;
   border-radius: 4px;
   transition: all 150ms ease;
 }
 
-.tray-btn:hover {
+.tray-volume:hover,
+.tray-wifi:hover,
+.tray-bluetooth:hover,
+.tray-internet:hover,
+.tray-notifications:hover,
+.tray-clock:hover {
   background-color: $bg-light;
 }
 
-.tray-btn .icon {
+.tray-volume .icon,
+.tray-wifi .icon,
+.tray-bluetooth .icon,
+.tray-notifications .icon {
+  font-size: 14px;
+  color: $accent;
+}
+
+/* Internet icon: colors baked into SVGs by theme-set (no CSS needed) */
+.tray-internet .icon {
   font-size: 14px;
 }
 
-/* Per-indicator icon colors */
-.tray-btn.volume .icon     { color: $accent; }
-.tray-btn.wifi .icon       { color: $accent; }
-.tray-btn.bluetooth .icon  { color: $accent; }
-
-/* Internet icon: colors baked into SVGs by theme-set (no CSS needed) */
-
 /* Notifications: shape conveys state (outline=empty, filled=has, slash=DND) */
-.tray-btn.notifications .icon { color: $accent; }
 
 /* Clock in tray */
-.tray-btn.clock-btn .time {
+.tray-clock .time {
   font-weight: bold;
   color: $accent;
 }
@@ -195,7 +224,7 @@ window {
 }
 
 .cal-header {
-  padding: 4px 8px 8px;
+  padding: 4px 4px 8px;
 }
 
 .cal-month {
@@ -207,8 +236,8 @@ window {
 .cal-close {
   font-size: 13px;
   font-weight: bold;
-  color: $fg;
-  background-color: $bg-light;
+  color: $bg;
+  background-color: $accent;
   padding: 2px 8px;
   border-radius: 4px;
   min-width: 20px;
@@ -250,3 +279,8 @@ window {
   color: rgba($fg-dim, 0.4);
 }
 
+/* Quick Settings panel */
+@import "quick-settings";
+
+/* Notification Hub */
+@import "notification-hub";

@@ -9,6 +9,14 @@
 #include <pixman.h>
 #include "patches.h"
 
+/* Selection debug: compile with -DDEBUG_SEL */
+#ifdef DEBUG_SEL
+#include <stdio.h>
+#define DBGSEL(fmt, ...) fprintf(stderr, "[SEL] " fmt "\n", ##__VA_ARGS__)
+#else
+#define DBGSEL(fmt, ...) ((void)0)
+#endif
+
 /* Arbitrary sizes */
 #define UTF_SIZ       4
 #define ESC_BUF_SIZ   (128*UTF_SIZ)
@@ -316,6 +324,7 @@ void resettitle(void);
 void selclear(void);
 void selremove(void);
 void selinit(void);
+int selactive(void);
 void selstart(int, int, int);
 void selextend(int, int, int, int);
 int selected(int, int);

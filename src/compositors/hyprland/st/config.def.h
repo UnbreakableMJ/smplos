@@ -152,7 +152,7 @@ const int boxdraw_braille = 0;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "st-wl-256color";
+char *termname = "st-256color";
 
 /* default class */
 char *termclass = "terminal";
@@ -323,8 +323,8 @@ static Axiskey ashortcuts[] = {
 	{ ControlMask,          Button2, selopen,        {.i = 0},      1 },
 	#endif // OPEN_SELECTED_TEXT_PATCH
 	#if SCROLLBACK_MOUSE_PATCH
-	{ MOD_MASK_SHIFT, AXIS_VERTICAL, +1, kscrollup   , {.i = 1}, S_PRI},
-	{ MOD_MASK_SHIFT, AXIS_VERTICAL, -1, kscrolldown , {.i = 1}, S_PRI},
+	{ MOD_MASK_SHIFT, AXIS_VERTICAL, +1, kscrolldown , {.i = 3}, S_PRI},
+	{ MOD_MASK_SHIFT, AXIS_VERTICAL, -1, kscrollup   , {.i = 3}, S_PRI},
 	#elif UNIVERSCROLL_PATCH
 	{ MOD_MASK_ANY, AXIS_VERTICAL,   +1, ttysend, {.s = "\033[5;2~"}, S_PRI},
 	{ MOD_MASK_ANY, AXIS_VERTICAL,   -1, ttysend, {.s = "\033[6;2~"}, S_PRI},
@@ -333,8 +333,8 @@ static Axiskey ashortcuts[] = {
 	{ MOD_MASK_SHIFT, AXIS_VERTICAL, -1, ttysend, {.s = "\033[6;2~"} },
 	#endif // SCROLLBACK_MOUSE_PATCH
 	#if SCROLLBACK_MOUSE_ALTSCREEN_PATCH || REFLOW_PATCH
-	{ MOD_MASK_ANY, AXIS_VERTICAL,   +1, kscrollup,   {.i = 1}, S_PRI},
-	{ MOD_MASK_ANY, AXIS_VERTICAL,   -1, kscrolldown, {.i = 1}, S_PRI},
+	{ MOD_MASK_ANY, AXIS_VERTICAL,   +1, kscrolldown, {.i = 3}, S_PRI},
+	{ MOD_MASK_ANY, AXIS_VERTICAL,   -1, kscrollup,   {.i = 3}, S_PRI},
 	{ MOD_MASK_ANY, AXIS_VERTICAL,   +1, ttysend, {.s = "\031"}, S_ALT},
 	{ MOD_MASK_ANY, AXIS_VERTICAL,   -1, ttysend, {.s = "\005"}, S_ALT},
 	#else

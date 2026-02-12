@@ -531,6 +531,12 @@ selinit(void)
 	sel.ob.x = -1;
 }
 
+int
+selactive(void)
+{
+	return sel.mode != SEL_IDLE;
+}
+
 #if !REFLOW_PATCH
 int
 tlinelen(int y)
@@ -558,6 +564,7 @@ tlinelen(int y)
 void
 selstart(int col, int row, int snap)
 {
+	DBGSEL("selstart col=%d row=%d snap=%d scr=%d", col, row, snap, term.scr);
 	selclear();
 	sel.mode = SEL_EMPTY;
 	sel.type = SEL_REGULAR;
@@ -566,6 +573,9 @@ selstart(int col, int row, int snap)
 	sel.oe.x = sel.ob.x = col;
 	sel.oe.y = sel.ob.y = row;
 	selnormalize();
+	DBGSEL("selstart after norm: ob=(%d,%d) oe=(%d,%d) nb=(%d,%d) ne=(%d,%d)",
+		sel.ob.x, sel.ob.y, sel.oe.x, sel.oe.y,
+		sel.nb.x, sel.nb.y, sel.ne.x, sel.ne.y);
 
 	if (sel.snap != 0)
 		sel.mode = SEL_READY;
@@ -576,6 +586,9 @@ void
 selextend(int col, int row, int type, int done)
 {
 	int oldey, oldex, oldsby, oldsey, oldtype;
+
+	DBGSEL("selextend col=%d row=%d done=%d scr=%d mode=%d",
+		col, row, done, term.scr, sel.mode);
 
 	if (sel.mode == SEL_IDLE)
 		return;
@@ -780,6 +793,89 @@ getsel(void)
 	if (sel.ob.x == -1)
 		return NULL;
 
+	DBGSEL("getsel: ob=(%d,%d) oe=(%d,%d) nb=(%d,%d) ne=(%d,%d) scr=%d row=%d",
+		sel.ob.x, sel.ob.y, sel.oe.x, sel.oe.y,
+		sel.nb.x, sel.nb.y, sel.ne.x, sel.ne.y,
+		term.scr, term.row);
+
+	/* Normalize without selsnap (coords may be off-screen) */
+	if (sel.type == SEL_REGULAR && sel.ob.y != sel.oe.y) {
+		sel.nb.x = sel.ob.y < sel.oe.y ? sel.ob.x : sel.oe.x;
+		sel.ne.x = sel.ob.y < sel.oe.y ? sel.oe.x : sel.ob.x;
+	} else {
+		sel.nb.x = MIN(sel.ob.x, sel.oe.x);
+		sel.ne.x = MAX(sel.ob.x, sel.oe.x);
+	}
+	sel.nb.y = MIN(sel.ob.y, sel.oe.y);
+	sel.ne.y = MAX(sel.ob.y, sel.oe.y);
+
+	DBGSEL("getsel after renorm: nb=(%d,%d) ne=(%d,%d)",
+		sel.nb.x, sel.nb.y, sel.ne.x, sel.ne.y);
+
+	/* Validate selection bounds */
+	if (sel.nb.y > sel.ne.y)
+		return NULL;
+	if (sel.nb.x < 0 || sel.ne.x < 0 || sel.nb.x >= term.col || sel.ne.x >= term.col)
+		return NULL;
+
+	#if SCROLLBACK_PATCH
+	/* Clamp to valid TLINE range */
+	{
+		int ystart = sel.nb.y < 0 ? 0 : sel.nb.y;
+		int ymax = term.row + term.scr - 1;
+		int yend = sel.ne.y > ymax ? ymax : sel.ne.y;
+		int xstart, xend;
+
+		if (ystart > yend)
+			return NULL;
+
+		DBGSEL("getsel clamped: y=%d..%d (from %d..%d)",
+			ystart, yend, sel.nb.y, sel.ne.y);
+
+		bufsize = (term.col+1) * (yend-ystart+1) * UTF_SIZ;
+		ptr = str = xmalloc(bufsize);
+
+		for (y = ystart; y <= yend; y++)
+		{
+			if ((linelen = tlinelen(y)) == 0) {
+				*ptr++ = '\n';
+				continue;
+			}
+
+			xstart = (y == sel.nb.y) ? sel.nb.x : 0;
+			xend = (y == sel.ne.y) ? sel.ne.x : term.col - 1;
+
+			if (sel.type == SEL_RECTANGULAR) {
+				xstart = sel.nb.x;
+				xend = sel.ne.x;
+			}
+
+			gp = &TLINE(y)[xstart];
+			lastx = xend;
+			last = &TLINE(y)[MIN(lastx, linelen-1)];
+			while (last >= gp && last->u == ' ')
+				--last;
+
+			for ( ; gp <= last; ++gp) {
+				if (gp->mode & ATTR_WDUMMY)
+					continue;
+				ptr += utf8encode(gp->u, ptr);
+			}
+
+			if ((y < yend || lastx >= linelen)
+			    && (!(last->mode & ATTR_WRAP) || sel.type == SEL_RECTANGULAR))
+				*ptr++ = '\n';
+		}
+		*ptr = 0;
+		return str;
+	}
+	#else
+	if (sel.nb.y < 0 || sel.ne.y >= term.row)
+		return NULL;
+	#endif
+	if (sel.nb.x < 0 || sel.ne.x < 0 || sel.nb.x >= term.col || sel.ne.x >= term.col)
+		return NULL;
+
 	bufsize = (term.col+1) * (sel.ne.y-sel.nb.y+1) * UTF_SIZ;
 	ptr = str = xmalloc(bufsize);
 
@@ -869,7 +965,6 @@ selclear(void)
 {
 	if (sel.ob.x == -1)
 		return;
-
 	tsetdirt(sel.nb.y, sel.ne.y);
 	selinit();
 }

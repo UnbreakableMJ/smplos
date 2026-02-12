@@ -1,0 +1,126 @@
+#!/bin/bash
+# Toggle wired (ethernet) connection on/off
+# Handles multiple NICs: toggles ALL connected or ALL disconnected adapters
+# Usage: wired-toggle
+
+# Ensure NetworkManager is running (it's part of smplOS, just may not be started)
+ensure_nm() {
+  command -v nmcli &>/dev/null || return 1
+  if nmcli -t general status &>/dev/null; then
+    return 0
+  fi
+  sudo -n systemctl start NetworkManager 2>/dev/null || return 1
+  sleep 1
+  nmcli -t general status &>/dev/null
+}
+
+# Collect all ethernet interfaces and their states
+# Populates parallel arrays: IFACES[], STATES[]
+get_ethernet() {
+  IFACES=()
+  STATES=()
+
+  if ensure_nm; then
+    while IFS=: read -r type device state _; do
+      [[ "${type,,}" == "ethernet" ]] || continue
+      IFACES+=("$device")
+      STATES+=("$state")
+    done < <(nmcli -t -f TYPE,DEVICE,STATE device 2>/dev/null)
+  fi
+
+  # Fallback: scan sysfs for physical NICs
+  if [[ ${#IFACES[@]} -eq 0 ]]; then
+    for path in /sys/class/net/*/; do
+      local dev
+      dev=$(basename "$path")
+      [[ "$dev" == "lo" ]] && continue
+      [[ -d "/sys/class/net/$dev/wireless" ]] && continue
+      [[ "$dev" =~ ^(tun|tap|veth|docker|virbr|br-) ]] && continue
+      [[ -e "/sys/class/net/$dev/device" ]] || continue
+      IFACES+=("$dev")
+      local op
+      op=$(< "/sys/class/net/$dev/operstate")
+      STATES+=("$op")
+    done
+  fi
+}
+
+get_ethernet
+
+if [[ ${#IFACES[@]} -eq 0 ]]; then
+  notify-send "Network" "No ethernet adapter found" -t 2000
+  exit 1
+fi
+
+# Determine overall direction: if ANY NIC is connected -> disconnect all; else connect all
+any_connected=false
+for state in "${STATES[@]}"; do
+  [[ "$state" == "connected" || "$state" == "up" ]] && { any_connected=true; break; }
+done
+
+ok=0
+fail=0
+
+if ensure_nm; then
+  # -- NetworkManager path --
+  for i in "${!IFACES[@]}"; do
+    iface="${IFACES[$i]}"
+    state="${STATES[$i]}"
+
+    if $any_connected; then
+      # Disconnect connected NICs
+      [[ "$state" != "connected" ]] && continue
+      if nmcli device disconnect "$iface" &>/dev/null; then
+        ((ok++))
+      else
+        ((fail++))
+      fi
+    else
+      # Connect disconnected NICs (only if cable is in)
+      carrier=$(cat "/sys/class/net/$iface/carrier" 2>/dev/null || echo "0")
+      [[ "$carrier" == "1" || "$state" == "disconnected" ]] || continue
+      if nmcli device connect "$iface" &>/dev/null; then
+        ((ok++))
+      else
+        ((fail++))
+      fi
+    fi
+  done
+else
+  # -- Fallback: ip link --
+  for i in "${!IFACES[@]}"; do
+    iface="${IFACES[$i]}"
+    state="${STATES[$i]}"
+
+    if $any_connected; then
+      [[ "$state" != "up" ]] && continue
+      if sudo -n ip link set "$iface" down 2>/dev/null; then
+        ((ok++))
+      else
+        ((fail++))
+      fi
+    else
+      if sudo -n ip link set "$iface" up 2>/dev/null; then
+        command -v dhcpcd &>/dev/null && sudo -n dhcpcd "$iface" &>/dev/null &
+        ((ok++))
+      else
+        ((fail++))
+      fi
+    fi
+  done
+fi
+
+# Notify result
+if $any_connected; then
+  if ((ok > 0)); then
+    notify-send "Wired" "Disconnected $ok adapter$( ((ok>1)) && echo s)" -t 1500
+  elif ((fail > 0)); then
+    notify-send "Wired" "Failed to disconnect" -t 3000
+  fi
+else
+  if ((ok > 0)); then
+    notify-send "Wired" "Connected $ok adapter$( ((ok>1)) && echo s)" -t 1500
+  elif ((fail > 0)); then
+    notify-send "Wired" "Failed to connect" -t 3000
+  fi
+fi

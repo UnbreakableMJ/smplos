@@ -1,0 +1,18 @@
+#!/bin/bash
+# Toggle night light (blue light filter) using gammastep
+# Usage: nightlight-toggle
+
+if ! command -v gammastep &>/dev/null; then
+  notify-send "Night Light" "gammastep not found" -t 2000
+  exit 1
+fi
+
+if pgrep -x gammastep &>/dev/null; then
+  pkill -x gammastep
+  notify-send "Night Light" "Disabled" -t 1500
+else
+  # 4500K warm, no location needed with -O (one-shot mode)
+  gammastep -O 4500 &>/dev/null &
+  disown
+  notify-send "Night Light" "Enabled (4500K)" -t 1500
+fi

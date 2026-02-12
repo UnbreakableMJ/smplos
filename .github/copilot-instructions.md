@@ -118,6 +118,20 @@ src/compositors/dwm/        ← ONLY DWM-specific config (future)
   structure: setup, emit function, initial emit, watch loop. All `src/shared/bin/`
   scripts should follow the same error-handling and logging conventions.
 
+### Suckless-style Programs (st, dwm, etc.)
+
+- **ALWAYS edit `config.def.h`, NOT `config.h`.** The Makefile has a rule:
+  `config.h: config.def.h` → `cp config.def.h config.h`. This means `config.h`
+  is auto-generated and will be **overwritten** on every build. All persistent
+  configuration changes MUST go in `config.def.h`.
+- Same applies to `patches.def.h` → `patches.h`.
+- After editing `config.def.h`, delete `config.h` to force regeneration:
+  `rm -f config.h && make clean && make`
+- The `termname` variable sets the `$TERM` value. Use standard entries like
+  `st-256color` or `xterm-256color` — custom names like `st-wl-256color` will
+  break `clear`, `ncurses`, and other terminfo-dependent tools unless you also
+  install a matching terminfo entry.
+
 ### Packages
 
 - Keep the package list minimal. Audit regularly for bloat.

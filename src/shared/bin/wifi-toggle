@@ -1,0 +1,24 @@
+#!/bin/bash
+# Toggle WiFi radio on/off using rfkill (true RF silence)
+# Usage: wifi-toggle
+
+if ! command -v rfkill &>/dev/null; then
+  notify-send "WiFi" "rfkill not found" -t 2000
+  exit 1
+fi
+
+# rfkill may need root -- test with list (read-only)
+RFKILL="rfkill"
+if ! rfkill list wifi &>/dev/null; then
+  RFKILL="sudo -n rfkill"
+fi
+
+if rfkill -o SOFT -n list wifi 2>/dev/null | grep -qi blocked; then
+  $RFKILL unblock wifi 2>/dev/null
+  command -v nmcli &>/dev/null && nmcli radio wifi on 2>/dev/null
+  notify-send "WiFi" "Radio enabled" -t 1500
+else
+  command -v nmcli &>/dev/null && nmcli radio wifi off 2>/dev/null
+  $RFKILL block wifi 2>/dev/null
+  notify-send "WiFi" "Radio disabled" -t 1500
+fi

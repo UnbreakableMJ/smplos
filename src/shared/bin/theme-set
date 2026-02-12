@@ -53,15 +53,17 @@ fi
 # We re-copy from source and replace with actual hex values each theme switch
 _accent=$(grep '^accent' "$CURRENT_THEME_PATH/colors.toml" 2>/dev/null | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
 _fg=$(grep '^foreground' "$CURRENT_THEME_PATH/colors.toml" 2>/dev/null | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
+_bg=$(grep '^background' "$CURRENT_THEME_PATH/colors.toml" 2>/dev/null | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
 _fg=${_fg:-#888888}
 _accent=${_accent:-#888888}
+_bg=${_bg:-#1e1e2e}
 EWW_ICONS_TPL="$HOME/.local/share/smplos/icons/status"
 EWW_ICONS_DST="$HOME/.config/eww/icons/status"
 if [[ -d "$EWW_ICONS_TPL" ]]; then
   mkdir -p "$EWW_ICONS_DST"
   for svg in "$EWW_ICONS_TPL"/*.svg; do
     [[ -f "$svg" ]] || continue
-    sed "s/{{accent}}/$_accent/g; s/{{fg}}/$_fg/g" "$svg" > "$EWW_ICONS_DST/$(basename "$svg")"
+    sed "s/{{accent}}/$_accent/g; s/{{fg}}/$_fg/g; s/{{bg}}/$_bg/g" "$svg" > "$EWW_ICONS_DST/$(basename "$svg")"
   done
 fi
 
