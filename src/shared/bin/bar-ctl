@@ -28,43 +28,20 @@ eww_start() {
     if ! pidof eww &>/dev/null; then
         # Kill any orphaned listener scripts from a previous EWW crash/kill
         pkill -f "eww.*scripts/.*\.sh" 2>/dev/null
-        # Also kill their child watchers (socat, pactl subscribe, inotifywait, nmcli monitor)
         pkill -f "socat -u UNIX-CONNECT:.*/hypr/.*\.socket2\.sock" 2>/dev/null
         pkill -f "pactl subscribe" 2>/dev/null
         pkill -f "nmcli monitor" 2>/dev/null
-        echo "$(date '+%H:%M:%S') Starting eww daemon..." >> "$LOG"
-        eww daemon --debug --config "$EWW_CONFIG" >> "$LOG" 2>&1
-        # Wait for daemon to be ready (poll for up to 5 seconds)
-        for i in $(seq 1 10); do
-            if eww --config "$EWW_CONFIG" ping >> "$LOG" 2>&1; then
-                echo "$(date '+%H:%M:%S') Daemon ready after ${i}x500ms" >> "$LOG"
-                break
-            fi
-            sleep 0.5
-        done
     else
         echo "$(date '+%H:%M:%S') eww already running (pid $(pidof eww))" >> "$LOG"
     fi
-    # Log the eww internal log location
-    local eww_log
-    eww_log=$(find "${XDG_CACHE_HOME:-$HOME/.cache}/eww" -name 'eww_*.log' -newer /proc/1/cmdline 2>/dev/null | head -1)
-    if [[ -n "$eww_log" ]]; then
-        echo "$(date '+%H:%M:%S') EWW internal log: $eww_log" >> "$LOG"
-        echo "--- eww log contents ---" >> "$LOG"
-        cat "$eww_log" >> "$LOG" 2>&1
-        echo "--- end eww log ---" >> "$LOG"
-    fi
+
+    # Let EWW handle daemon spawning itself — running 'eww open' on a
+    # non-running daemon auto-starts one. This avoids the race condition
+    # where a separate 'eww daemon' + 'eww open' could spawn two daemons
+    # if the IPC socket wasn't ready between the two commands.
     echo "$(date '+%H:%M:%S') Opening: $BAR_NAME" >> "$LOG"
-    eww --config "$EWW_CONFIG" close "$BAR_NAME" 2>/dev/null  # prevent duplicates
     eww --config "$EWW_CONFIG" open "$BAR_NAME" >> "$LOG" 2>&1
-    # Verify the bar actually opened (don't blindly retry — that causes duplicates)
-    sleep 0.5
-    if ! eww --config "$EWW_CONFIG" active-windows 2>/dev/null | grep -q "$BAR_NAME"; then
-        echo "$(date '+%H:%M:%S') Bar not in active windows, retrying..." >> "$LOG"
-        sleep 2
-        eww --config "$EWW_CONFIG" open "$BAR_NAME" >> "$LOG" 2>&1
-    fi
-    # Log open windows
+
     echo "$(date '+%H:%M:%S') Active windows:" >> "$LOG"
     eww --config "$EWW_CONFIG" active-windows >> "$LOG" 2>&1
     echo "$(date '+%H:%M:%S') bar-ctl start complete" >> "$LOG"
