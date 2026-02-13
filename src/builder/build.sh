@@ -509,10 +509,11 @@ setup_airootfs() {
     mkdir -p "$airootfs/opt/flatpaks"
     mkdir -p "$airootfs/var/cache/smplos/mirror"
     
-    # Symlink offline mirror into airootfs (mkarchiso follows symlinks into squashfs)
-    # This avoids duplicating ~500MB of packages during the build
-    log_info "Linking offline repository into airootfs..."
-    ln -sf "$OFFLINE_MIRROR_DIR" "$airootfs/var/cache/smplos/mirror/offline"
+    # Copy offline mirror into airootfs
+    # Uses --reflink=auto for CoW on supported filesystems (avoids real duplication)
+    # Can't use symlinks — mkarchiso rejects paths outside airootfs
+    log_info "Copying offline repository into airootfs..."
+    cp -r --reflink=auto "$OFFLINE_MIRROR_DIR" "$airootfs/var/cache/smplos/mirror/offline"
     
     # Copy shared bin scripts
     if [[ -d "$SRC_DIR/shared/bin" ]]; then
