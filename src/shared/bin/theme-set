@@ -129,6 +129,10 @@ if pgrep -x eww >/dev/null; then
   eww --config "$HOME/.config/eww" kill 2>/dev/null
   sleep 0.3
   killall -9 eww 2>/dev/null  # ensure no zombies
+  # Kill orphaned listener scripts — eww kill only stops the daemon,
+  # deflisten child processes get reparented to PID 1 and leak
+  pkill -f "scripts/(volume|network|bluetooth|notification|brightness|workspaces|active-workspace|window-title|sysmenu|notif-hub)-?listener?\.sh" 2>/dev/null
+  pkill -f "scripts/(workspaces|active-workspace|window-title)\.sh" 2>/dev/null
   sleep 0.2
   bar-ctl start &
 fi

@@ -26,6 +26,12 @@ find "$EWW_CONFIG/scripts" -name '*.sh' ! -perm -u+x -exec chmod +x {} \; 2>/dev
 
 eww_start() {
     if ! pidof eww &>/dev/null; then
+        # Kill any orphaned listener scripts from a previous EWW crash/kill
+        pkill -f "eww.*scripts/.*\.sh" 2>/dev/null
+        # Also kill their child watchers (socat, pactl subscribe, inotifywait, nmcli monitor)
+        pkill -f "socat -u UNIX-CONNECT:.*/hypr/.*\.socket2\.sock" 2>/dev/null
+        pkill -f "pactl subscribe" 2>/dev/null
+        pkill -f "nmcli monitor" 2>/dev/null
         echo "$(date '+%H:%M:%S') Starting eww daemon..." >> "$LOG"
         eww daemon --debug --config "$EWW_CONFIG" >> "$LOG" 2>&1
         # Wait for daemon to be ready (poll for up to 5 seconds)
@@ -50,11 +56,14 @@ eww_start() {
     fi
     echo "$(date '+%H:%M:%S') Opening: $BAR_NAME" >> "$LOG"
     eww --config "$EWW_CONFIG" close "$BAR_NAME" 2>/dev/null  # prevent duplicates
-    eww --config "$EWW_CONFIG" open "$BAR_NAME" >> "$LOG" 2>&1 || {
-        echo "$(date '+%H:%M:%S') First open of $BAR_NAME failed (exit $?), retrying in 2s..." >> "$LOG"
+    eww --config "$EWW_CONFIG" open "$BAR_NAME" >> "$LOG" 2>&1
+    # Verify the bar actually opened (don't blindly retry — that causes duplicates)
+    sleep 0.5
+    if ! eww --config "$EWW_CONFIG" active-windows 2>/dev/null | grep -q "$BAR_NAME"; then
+        echo "$(date '+%H:%M:%S') Bar not in active windows, retrying..." >> "$LOG"
         sleep 2
         eww --config "$EWW_CONFIG" open "$BAR_NAME" >> "$LOG" 2>&1
-    }
+    fi
     # Log open windows
     echo "$(date '+%H:%M:%S') Active windows:" >> "$LOG"
     eww --config "$EWW_CONFIG" active-windows >> "$LOG" 2>&1
