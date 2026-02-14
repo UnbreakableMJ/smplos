@@ -3,7 +3,8 @@ set -euo pipefail
 #
 # dev-apply.sh -- Apply all pushed files inside the running VM
 #
-# Usage:  sudo bash /mnt/dev-apply.sh
+# Usage:  sudo bash /mnt/dev-apply.sh          (everything except st)
+#         sudo bash /mnt/dev-apply.sh st        (also install st-wl binary)
 #
 
 SHARE="/mnt"
@@ -123,6 +124,19 @@ if [[ -d "$SHARE/configs" && "$(ls -A "$SHARE/configs" 2>/dev/null)" ]]; then
     log "  done"
 fi
 
+# ── notif-center ─────────────────────────────────────────────
+if [[ -f "$SHARE/notif-center/notif-center" ]]; then
+    log "Applying notif-center binary..."
+    # If a directory exists (from previous bug), remove it
+    if [[ -d "/usr/local/bin/notif-center" ]]; then
+        rm -rf "/usr/local/bin/notif-center"
+    fi
+    cp "$SHARE/notif-center/notif-center" "/usr/local/bin/"
+    chmod +x "/usr/local/bin/notif-center"
+    own "/usr/local/bin/notif-center"
+    log "  done"
+fi
+
 # ── Hyprland configs ────────────────────────────────────────
 if [[ -d "$SHARE/hypr" && "$(ls -A "$SHARE/hypr" 2>/dev/null)" ]]; then
     log "Applying Hyprland configs..."
@@ -148,12 +162,14 @@ if [[ -d "$SHARE/themes" && "$(ls -A "$SHARE/themes" 2>/dev/null)" ]]; then
     log "  done"
 fi
 
-# ── st-wl terminal ─────────────────────────────────────────
-if [[ -f "$SHARE/st/st-wl" ]]; then
+# ── st-wl terminal (only when 'st' arg passed -- replacing st while running from it kills the shell) ──
+if [[ -f "$SHARE/st/st-wl" ]] && [[ " ${*:-} " == *" st "* ]]; then
     log "Installing st-wl binary..."
     cp "$SHARE/st/st-wl" /usr/local/bin/st-wl
     chmod +x /usr/local/bin/st-wl
     log "  done"
+elif [[ -f "$SHARE/st/st-wl" ]]; then
+    log "Skipping st-wl (pass 'st' arg to install, e.g.: sudo bash /mnt/dev-apply.sh st)"
 fi
 
 # ── Ensure essential services ───────────────────────────────

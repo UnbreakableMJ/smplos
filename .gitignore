@@ -14,6 +14,12 @@
 src/compositors/hyprland/st/st-wl
 src/compositors/dwm/st/st
 
+# ── Rust build artifacts ────────────────────────────────────
+**/target/
+
+# ── Dev-only test scripts ──────────────────────────────────
+src/shared/notif-center/test-notifications.sh
+
 # ── Generated protocol files (wayland-scanner output) ───────
 xdg-shell-protocol.c
 xdg-shell-client-protocol.h

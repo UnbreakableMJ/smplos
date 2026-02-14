@@ -143,7 +143,7 @@
 ;; Notifications bell (empty=none, filled=has notifications)
 (defwidget tray-notifications []
   (button :class "tray-notifications ${notif-data.count != '0' ? 'has-notifs' : ''}"
-          :onclick "popup-toggle notification-hub"
+          :onclick "toggle-notif-center"
           :onrightclick "dunstctl history-clear"
           :tooltip {notif-data.count != "0" ? "${notif-data.count} notifications" : "No notifications"}
     (label :class "icon" :text {notif-data.icon})))

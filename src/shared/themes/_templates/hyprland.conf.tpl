@@ -10,3 +10,4 @@ $themeOpacityActive = {{ opacity_active }}
 $themeOpacityInactive = {{ opacity_inactive }}
 $themeTermOpacityActive = {{ term_opacity_active }}
 $themeTermOpacityInactive = {{ term_opacity_inactive }}
+$themePopupOpacity = {{ popup_opacity }}
