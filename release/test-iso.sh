@@ -16,14 +16,17 @@ fi
 # ------------------------------------------------------------
 
 need() {
+    # $1 = binary name, $2 = package name (optional, defaults to $1)
     if ! command -v "$1" >/dev/null 2>&1; then
+        local pkg="${2:-$1}"
         echo "Missing dependency: $1"
-        echo "Install it with: sudo pacman -S $1"
+        echo "Install it with: sudo pacman -S $pkg"
         exit 1
     fi
 }
 
-need qemu-system-x86_64
+# Binary is qemu-system-x86_64, but the Arch package is qemu-system-x86
+need qemu-system-x86_64 qemu-system-x86
 need qemu-img
 need wmctrl
 
