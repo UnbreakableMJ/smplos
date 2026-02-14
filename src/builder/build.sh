@@ -477,6 +477,56 @@ build_st() {
 }
 
 ###############################################################################
+# Build notif-center (Rust+Slint notification center) from source
+###############################################################################
+
+build_notif_center() {
+    log_step "Building notif-center from source"
+
+    local airootfs="$PROFILE_DIR/airootfs"
+    local nc_src="$SRC_DIR/shared/notif-center"
+
+    if [[ ! -f "$nc_src/Cargo.toml" ]]; then
+        log_warn "notif-center source not found at $nc_src, skipping"
+        return
+    fi
+
+    # Install Rust toolchain and build deps
+    pacman --noconfirm --needed -S rust cargo cmake pkgconf fontconfig freetype2 \
+        libxkbcommon wayland libglvnd mesa 2>/dev/null || true
+
+    # Build in a temp dir to avoid polluting the source tree
+    local build_dir="/tmp/notif-center-build"
+    rm -rf "$build_dir"
+    cp -r "$nc_src" "$build_dir"
+    cd "$build_dir"
+
+    log_info "Compiling notif-center (release)..."
+    cargo build --release
+
+    local bin_path="$build_dir/target/release/notif-center"
+    if [[ ! -x "$bin_path" ]]; then
+        log_warn "notif-center binary not found after build, skipping"
+        cd "$SRC_DIR"
+        rm -rf "$build_dir"
+        return
+    fi
+
+    # Install binary into the ISO
+    install -Dm755 "$bin_path" "$airootfs/usr/local/bin/notif-center"
+    strip "$airootfs/usr/local/bin/notif-center"
+
+    # Also stage for the installer to deploy to the installed system
+    install -Dm755 "$bin_path" "$airootfs/root/smplos/bin/notif-center"
+    strip "$airootfs/root/smplos/bin/notif-center"
+
+    cd "$SRC_DIR"
+    rm -rf "$build_dir"
+
+    log_info "notif-center built and installed successfully"
+}
+
+###############################################################################
 # Configure Airootfs
 ###############################################################################
 
@@ -1022,6 +1072,7 @@ main() {
     update_profiledef
     setup_airootfs
     build_st
+    build_notif_center
     setup_boot
     build_iso
     
