@@ -331,7 +331,7 @@ main_partition_size=$((disk_size_in_mib - main_partition_start - gpt_backup_rese
 if lspci -nn 2>/dev/null | grep -q "106b:180[12]"; then
   kernel_choice="linux-t2"
 else
-  kernel_choice="linux"
+  kernel_choice="linux-zen"
 fi
 
 # Build package list dynamically from packages.txt

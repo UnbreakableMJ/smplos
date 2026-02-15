@@ -172,6 +172,9 @@ setup_profile() {
     # We base our ISO on the official arch ISO (releng) config
     cp -r /usr/share/archiso/configs/releng/* "$PROFILE_DIR/"
     
+    # Use linux-zen instead of the default linux kernel
+    sed -i 's/^linux$/linux-zen/' "$PROFILE_DIR/packages.x86_64"
+    
     # Remove reflector service (we'll use our offline mirror)
     rm -rf "$PROFILE_DIR/airootfs/etc/systemd/system/multi-user.target.wants/reflector.service" 2>/dev/null || true
     rm -rf "$PROFILE_DIR/airootfs/etc/systemd/system/reflector.service.d" 2>/dev/null || true
@@ -1101,13 +1104,13 @@ set gfxpayload=keep
 # Function to load initrd with optional microcode
 # Microcode may be bundled in initramfs or separate files
 menuentry "smplOS (Hyprland)" --class arch --class gnu-linux --class gnu --class os {
-    linux /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% quiet splash
-    initrd /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
+    linux /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux-zen archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% quiet splash
+    initrd /%INSTALL_DIR%/boot/x86_64/initramfs-linux-zen.img
 }
 
 menuentry "smplOS (Safe Mode)" --class arch --class gnu-linux --class gnu --class os {
-    linux /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% nomodeset
-    initrd /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
+    linux /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux-zen archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% nomodeset
+    initrd /%INSTALL_DIR%/boot/x86_64/initramfs-linux-zen.img
 }
 GRUBCFG
 
@@ -1136,14 +1139,14 @@ MENU TITLE smplOS Boot Menu
 
 LABEL arch
     MENU LABEL smplOS (Hyprland)
-    LINUX /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux
-    INITRD /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
+    LINUX /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux-zen
+    INITRD /%INSTALL_DIR%/boot/x86_64/initramfs-linux-zen.img
     APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% quiet splash
 
 LABEL arch_safe
     MENU LABEL smplOS (Safe Mode)
-    LINUX /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux
-    INITRD /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
+    LINUX /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux-zen
+    INITRD /%INSTALL_DIR%/boot/x86_64/initramfs-linux-zen.img
     APPEND archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% nomodeset
 ARCHISOSYS
     

@@ -260,7 +260,7 @@ install_base() {
     log "Installing packages (this may take a while)..."
     
     pacstrap -C /etc/pacman.conf "$MOUNT_POINT" \
-        base linux linux-firmware \
+        base linux-zen linux-firmware \
         btrfs-progs \
         grub efibootmgr \
         networkmanager \

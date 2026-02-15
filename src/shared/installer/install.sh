@@ -193,6 +193,10 @@ EOF
   sudo tee /etc/systemd/system/plymouth-quit.service.d/wait-for-graphical.conf <<'EOF' >/dev/null
 [Unit]
 After=multi-user.target
+
+[Service]
+ExecStart=
+ExecStart=/usr/bin/plymouth quit --retain-splash
 EOF
   sudo systemctl mask plymouth-quit-wait.service
 
