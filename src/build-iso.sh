@@ -28,11 +28,17 @@ show_help() {
     cat << 'EOF'
 smplOS ISO Builder
 
-Usage: build-iso.sh [OPTIONS]
+Usage: build-iso.sh [EDITIONS...] [OPTIONS]
+
+Editions (stackable):
+    -p, --productivity      Office & workflow (Logseq, LibreOffice, etc.)
+    -c, --creators          Design & media (GIMP, OBS, Kdenlive, etc.)
+    -m, --communication     Chat & calls (Discord, Signal, Slack, etc.)
+    -d, --development       Developer tools (docker, lazygit, etc.)
+    -a, --ai                AI tools (ollama, etc.)
 
 Options:
-    -c, --compositor NAME   Compositor to build (hyprland, dwm) [default: hyprland]
-    -e, --edition NAME      Edition variant (lite, creators) [optional]
+    --compositor NAME       Compositor to build (hyprland, dwm) [default: hyprland]
     -r, --release           Release build: max xz compression (slow, smallest ISO)
     -n, --no-cache          Force fresh package downloads
     -v, --verbose           Verbose output
@@ -42,9 +48,10 @@ Options:
     -h, --help              Show this help
 
 Examples:
-    ./build-iso.sh                        # Standard build
-    ./build-iso.sh --skip-aur             # Skip AUR (much faster)
-    ./build-iso.sh -c hyprland -e lite    # Hyprland Lite edition
+    ./build-iso.sh                        # Base build (no editions)
+    ./build-iso.sh -p                     # Productivity edition
+    ./build-iso.sh -p -d -c -m           # Stack multiple editions
+    ./build-iso.sh -p -d --skip-aur      # Stack editions, skip AUR
     ./build-iso.sh --release              # Max compression for release
 EOF
 }
@@ -54,7 +61,7 @@ EOF
 ###############################################################################
 
 COMPOSITOR="hyprland"
-EDITION=""
+EDITIONS=""
 RELEASE=""
 NO_CACHE=""
 VERBOSE=""
@@ -65,15 +72,19 @@ SKIP_APPIMAGE=""
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -c|--compositor) COMPOSITOR="$2"; shift 2 ;;
-            -e|--edition)    EDITION="$2"; shift 2 ;;
-            -r|--release)    RELEASE="1"; shift ;;
-            -n|--no-cache)   NO_CACHE="1"; shift ;;
-            -v|--verbose)    VERBOSE="1"; shift ;;
-            --skip-aur)      SKIP_AUR="1"; shift ;;
-            --skip-flatpak)  SKIP_FLATPAK="1"; shift ;;
-            --skip-appimage) SKIP_APPIMAGE="1"; shift ;;
-            -h|--help)       show_help; exit 0 ;;
+            -p|--productivity)  EDITIONS="${EDITIONS:+$EDITIONS,}productivity"; shift ;;
+            -c|--creators)      EDITIONS="${EDITIONS:+$EDITIONS,}creators"; shift ;;
+            -m|--communication) EDITIONS="${EDITIONS:+$EDITIONS,}communication"; shift ;;
+            -d|--development)   EDITIONS="${EDITIONS:+$EDITIONS,}development"; shift ;;
+            -a|--ai)            EDITIONS="${EDITIONS:+$EDITIONS,}ai"; shift ;;
+            --compositor)       COMPOSITOR="$2"; shift 2 ;;
+            -r|--release)       RELEASE="1"; shift ;;
+            -n|--no-cache)      NO_CACHE="1"; shift ;;
+            -v|--verbose)       VERBOSE="1"; shift ;;
+            --skip-aur)         SKIP_AUR="1"; shift ;;
+            --skip-flatpak)     SKIP_FLATPAK="1"; shift ;;
+            --skip-appimage)    SKIP_APPIMAGE="1"; shift ;;
+            -h|--help)          show_help; exit 0 ;;
             *) die "Unknown option: $1 (see --help)" ;;
         esac
     done
@@ -235,6 +246,18 @@ build_missing_aur_packages() {
             aur_packages+=("$line")
         done < "$f"
     done
+    # Edition AUR extras (iterate all stacked editions)
+    if [[ -n "${EDITIONS:-}" ]]; then
+        IFS=',' read -ra _eds <<< "$EDITIONS"
+        for _ed in "${_eds[@]}"; do
+            local _aur_file="$SCRIPT_DIR/editions/${_ed}/packages-aur-extra.txt"
+            [[ -f "$_aur_file" ]] || continue
+            while IFS= read -r line; do
+                [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+                aur_packages+=("$line")
+            done < "$_aur_file"
+        done
+    fi
     [[ ${#aur_packages[@]} -eq 0 ]] && return 0
 
     # Check which need building
@@ -340,7 +363,7 @@ build_missing_aur_packages() {
 run_build() {
     log_step "Starting ISO build in Docker"
     log_info "Compositor: $COMPOSITOR"
-    [[ -n "$EDITION" ]]  && log_info "Edition: $EDITION"
+    [[ -n "$EDITIONS" ]]  && log_info "Editions: $EDITIONS"
     [[ -n "$RELEASE" ]]  && log_info "Release: max xz compression"
     [[ -n "$SKIP_AUR" ]] && log_info "Skipping: AUR"
 
@@ -352,6 +375,10 @@ run_build() {
     build_date=$(date +%Y-%m-%d)
     local cache_dir="$PROJECT_ROOT/.cache/build_${build_date}"
     mkdir -p "$cache_dir/pacman" "$cache_dir/offline-repo"
+
+    # Persistent binary cache (survives across days — st / notif-center don't change often)
+    local bin_cache_dir="$PROJECT_ROOT/.cache/binaries"
+    mkdir -p "$bin_cache_dir"
 
     # Prune old caches (keep last 3 days)
     if [[ -d "$PROJECT_ROOT/.cache" ]]; then
@@ -368,6 +395,7 @@ run_build() {
         -v "$release_dir:/build/release"
         -v "$cache_dir/offline-repo:/var/cache/smplos/mirror/offline"
         -v "$cache_dir/pacman:/var/cache/smplos/pacman-cache"
+        -v "$bin_cache_dir:/var/cache/smplos/binaries"
         -e "COMPOSITOR=$COMPOSITOR"
         -e "HOST_UID=$(id -u)"
         -e "HOST_GID=$(id -g)"
@@ -385,7 +413,7 @@ run_build() {
         docker_args+=(-v "$prebuilt_dir:/build/prebuilt:ro")
     fi
 
-    [[ -n "$EDITION" ]]       && docker_args+=(-e "EDITION=$EDITION")
+    [[ -n "$EDITIONS" ]]       && docker_args+=(-e "EDITIONS=$EDITIONS")
     [[ -n "$RELEASE" ]]       && docker_args+=(-e "RELEASE=1")
     [[ -n "$NO_CACHE" ]]      && docker_args+=(-e "NO_CACHE=1")
     [[ -n "$VERBOSE" ]]       && docker_args+=(-e "VERBOSE=1")

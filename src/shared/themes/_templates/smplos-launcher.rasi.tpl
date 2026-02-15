@@ -13,7 +13,7 @@ configuration {
 
 /*****----- Global Properties -----*****/
 * {
-    font:                        "JetBrainsMono Nerd Font 11";
+    font:                        "JetBrainsMono Nerd Font 10";
     background:                  rgba({{ background_rgb }},{{ popup_opacity }});
     background-alt:              rgba({{ color0_rgb }},{{ popup_opacity }});
     background-solid:            {{ background }};
@@ -28,10 +28,10 @@ configuration {
 
     /* Layout tuning */
     box-spacing:                 10px;
-    list-padding:                8px;
+    list-padding:                4px;
     element-padding:             12px;
     element-radius:              8px;
-    element-spacing:             12px;
+    element-spacing:             8px;
 }
 
 /*****----- Main Window -----*****/
@@ -148,7 +148,7 @@ listview {
     reverse:                     false;
     fixed-height:                true;
     fixed-columns:               true;
-    spacing:                     @box-spacing;
+    spacing:                     2px;
     margin:                      0px;
     padding:                     0px;
     border:                      0px solid;
@@ -226,7 +226,7 @@ element alternate.active {
 element-icon {
     background-color:            transparent;
     text-color:                  inherit;
-    size:                        32px;
+    size:                        20px;
     cursor:                      inherit;
 }
 

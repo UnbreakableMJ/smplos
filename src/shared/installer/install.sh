@@ -61,9 +61,20 @@ fi
 # Always ensure all stock themes are deployed (skel may only have partial data)
 if [[ -d "$SMPLOS_PATH/themes" ]]; then
   echo "==> Deploying theme system..."
-  # Themes already copied here by automated_script.sh — nothing to do
-  # but verify they're present
   :  # themes already in place
+fi
+
+# Deploy edition desktop entries (web app wrappers like Discord)
+if [[ -d "$SMPLOS_PATH/applications" ]]; then
+  echo "==> Deploying edition desktop entries..."
+  mkdir -p "$HOME/.local/share/applications"
+  cp "$SMPLOS_PATH/applications/"*.desktop "$HOME/.local/share/applications/" 2>/dev/null || true
+fi
+# Deploy edition icons
+if [[ -d "$SMPLOS_PATH/icons/hicolor" ]]; then
+  echo "==> Deploying edition icons..."
+  sudo cp -r "$SMPLOS_PATH/icons/hicolor" /usr/share/icons/
+  sudo gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
 fi
 
 # Deploy custom os-release (smplOS branding)

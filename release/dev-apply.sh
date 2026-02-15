@@ -195,6 +195,23 @@ elif [[ -f "$SHARE/st/st-wl" ]]; then
     log "Skipping st-wl (pass 'st' arg to install, e.g.: sudo bash /mnt/dev-apply.sh st)"
 fi
 
+# ── Logseq theme plugins ────────────────────────────────────
+if [[ -d "$SHARE/.logseq/plugins" ]]; then
+    log "Applying Logseq theme plugins..."
+    mkdir -p "$USER_HOME/.logseq/plugins" "$USER_HOME/.logseq/settings"
+    cp -r "$SHARE/.logseq/plugins/"* "$USER_HOME/.logseq/plugins/"
+    [[ -d "$SHARE/.logseq/settings" ]] && cp -r "$SHARE/.logseq/settings/"* "$USER_HOME/.logseq/settings/"
+    own "$USER_HOME/.logseq"
+    log "  $(ls "$SHARE/.logseq/plugins" | wc -l) plugins installed"
+fi
+
+# ── Restart xdg-desktop-portal (picks up portals.conf changes) ──
+if [[ -f "$USER_HOME/.config/xdg-desktop-portal/portals.conf" ]]; then
+    log "Restarting xdg-desktop-portal..."
+    run_as_user "systemctl --user restart xdg-desktop-portal" 2>/dev/null || warn "  portal restart failed"
+    log "  done"
+fi
+
 # ── Ensure essential services ───────────────────────────────
 systemctl is-active --quiet NetworkManager 2>/dev/null || {
     log "Starting NetworkManager..."
