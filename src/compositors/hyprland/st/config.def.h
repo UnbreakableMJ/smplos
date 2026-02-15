@@ -58,7 +58,7 @@ char *stty_args = "stty raw pass8 nl -echo -iexten -cstopb 38400";
 #if SIXEL_PATCH
 char *vtiden = "\033[?62;4c"; /* VT200 family (62) with sixel (4) */
 
-/* sixel rgb byte order: LSBFirst or MSBFirst */
+/* sixel rgb byte order: LSBFirst or MSBFirst (X11 only, unused on Wayland) */
 //int const sixelbyteorder = LSBFirst;
 #else
 char *vtiden = "\033[?6c";
@@ -382,6 +382,8 @@ static Shortcut shortcuts[] = {
 	{ MOD_MASK_NONE,            XKB_KEY_F11,         fullscreen,      {.i =  0} },
 	#endif // FULLSCREEN_PATCH
 	#if SCROLLBACK_PATCH || REFLOW_PATCH
+	{ MOD_MASK_NONE,             XKB_KEY_Page_Up,     kscrollup,       {.i = -100} },
+	{ MOD_MASK_NONE,             XKB_KEY_Page_Down,   kscrolldown,     {.i = -100} },
 	{ MOD_MASK_SHIFT,            XKB_KEY_Page_Up,     kscrollup,       {.i = -100} },
 	{ MOD_MASK_SHIFT,            XKB_KEY_Page_Down,   kscrolldown,     {.i = -100} },
 	#endif // SCROLLBACK_PATCH || REFLOW_PATCH

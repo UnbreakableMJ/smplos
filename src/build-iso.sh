@@ -32,10 +32,11 @@ Usage: build-iso.sh [EDITIONS...] [OPTIONS]
 
 Editions (stackable):
     -p, --productivity      Office & workflow (Logseq, LibreOffice, etc.)
-    -c, --creators          Design & media (GIMP, OBS, Kdenlive, etc.)
+    -c, --creators          Design & media (OBS, Kdenlive, GIMP)
     -m, --communication     Chat & calls (Discord, Signal, Slack, etc.)
-    -d, --development       Developer tools (docker, lazygit, etc.)
+    -d, --development       Developer tools (VSCode, LazyVim, lazygit)
     -a, --ai                AI tools (ollama, etc.)
+    --all                   All editions (equivalent to -p -c -m -d -a)
 
 Options:
     --compositor NAME       Compositor to build (hyprland, dwm) [default: hyprland]
@@ -50,8 +51,8 @@ Options:
 Examples:
     ./build-iso.sh                        # Base build (no editions)
     ./build-iso.sh -p                     # Productivity edition
-    ./build-iso.sh -p -d -c -m           # Stack multiple editions
-    ./build-iso.sh -p -d --skip-aur      # Stack editions, skip AUR
+    ./build-iso.sh --all                  # All editions
+    ./build-iso.sh --all --skip-aur       # All editions, skip AUR
     ./build-iso.sh --release              # Max compression for release
 EOF
 }
@@ -77,6 +78,7 @@ parse_args() {
             -m|--communication) EDITIONS="${EDITIONS:+$EDITIONS,}communication"; shift ;;
             -d|--development)   EDITIONS="${EDITIONS:+$EDITIONS,}development"; shift ;;
             -a|--ai)            EDITIONS="${EDITIONS:+$EDITIONS,}ai"; shift ;;
+            --all)              EDITIONS="productivity,creators,communication,development,ai"; shift ;;
             --compositor)       COMPOSITOR="$2"; shift 2 ;;
             -r|--release)       RELEASE="1"; shift ;;
             -n|--no-cache)      NO_CACHE="1"; shift ;;

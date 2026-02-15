@@ -24,6 +24,40 @@ It draws inspiration from projects like [Omarchy](https://omakub.org/) but takes
 - **One UI toolkit.** EWW powers the bar, widgets, and dialogs. It runs on both X11 and Wayland. No waybar, no polybar, no redundant tools.
 - **14 built-in themes.** One command switches colors across the entire system — terminal, bar, notifications, borders, lock screen, and editor.
 
+---
+
+#### Start Menu
+
+The launcher is built with Rofi and styled to match the active theme. Tap <kbd>Super</kbd> to open it — it searches installed apps, does basic math, and closes on selection. No dock, no taskbar, no wasted pixels. Just a fast, keyboard-driven menu that stays out of your way until you need it.
+
+<a href="images/1-start-menu.png"><img src="images/1-start-menu.png" width="720" /></a>
+
+#### Memory Footprint
+
+A cold boot sits under 800 MB of RAM with the full desktop running — bar, notifications, compositor, and all background services. Unlike other lightweight distros that sacrifice usability to hit low numbers, smplOS keeps quality-of-life features like auto-mount, theme switching, a notification center, and a full app launcher. Light enough for a 2 GB VM, comfortable enough for daily driving.
+
+<a href="images/2-mem.png"><img src="images/2-mem.png" width="720" /></a>
+
+#### Notification Center
+
+We couldn't find a notification center that met our requirements: low RAM usage, works on both X11 and Wayland, and looks modern out of the box. So we wrote one from scratch in Rust. It integrates with Dunst, groups notifications by app, supports dismiss and clear-all, and uses a fraction of the memory that Electron-based alternatives need.
+
+<a href="images/3-notif-center.png"><img src="images/3-notif-center.png" width="720" /></a>
+
+#### Terminal (st-wl)
+
+st is our terminal of choice — a suckless terminal patched for the features that matter. It starts in milliseconds and idles at around 25 MB of RAM. We added SIXEL image support, scrollback, clipboard integration, Page Up/Down, and alpha transparency. The result is a terminal that can display inline images just like Kitty (~350 MB), but at a fraction of the footprint. Every fix was made in `config.def.h` following the suckless philosophy: if you don't need it, it doesn't exist.
+
+<a href="images/4.term.png"><img src="images/4.term.png" width="720" /></a>
+
+#### Themes
+
+smplOS ships with 14 themes inherited and expanded from the Omarchy project. A single `theme-set` command applies colors system-wide — terminal, EWW bar, notifications, Hyprland borders, lock screen, btop, neovim, and VS Code. Every theme includes matching wallpapers and is generated from a single `colors.toml` source of truth.
+
+<a href="images/5-themes.png"><img src="images/5-themes.png" width="720" /></a>
+
+---
+
 ### Design Decisions
 
 Every tool in smplOS was chosen to work across compositors — Wayland and X11 — so the OS feels identical regardless of which one you run.
@@ -44,9 +78,9 @@ smplOS ships in focused editions that **stack on top of each other**. Pick the o
 | Flag | Edition | Focus | Example apps |
 |------|---------|-------|-------------|
 | `-p` | **Productivity** | Office & workflow | Logseq, LibreOffice, KeePassXC |
-| `-c` | **Creators** | Design & media | GIMP, OBS, Kdenlive, Inkscape |
+| `-c` | **Creators** | Design & media | OBS, Kdenlive, GIMP |
 | `-m` | **Communication** | Chat & calls | Discord, Signal, Slack |
-| `-d` | **Development** | Developer tools | Docker, lazygit, neovim extras |
+| `-d` | **Development** | Developer tools | VSCode, LazyVim (neovim), lazygit |
 | `-a` | **AI** | AI tools | Ollama, open-webui |
 
 Build with any combination:
@@ -324,9 +358,9 @@ Usage: build-iso.sh [OPTIONS]
 
 Editions (stackable):
     -p, --productivity      Add Productivity edition (Logseq, LibreOffice, KeePassXC)
-    -c, --creators          Add Creators edition (GIMP, OBS, Kdenlive, Inkscape)
+    -c, --creators          Add Creators edition (OBS, Kdenlive, GIMP)
     -m, --communication     Add Communication edition (Discord, Signal, Slack)
-    -d, --development       Add Development edition (Docker, lazygit, neovim extras)
+    -d, --development       Add Development edition (VSCode, LazyVim, lazygit)
     -a, --ai                Add AI edition (Ollama, open-webui)
 
 General:

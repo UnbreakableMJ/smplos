@@ -1,0 +1,51 @@
+#!/bin/bash
+# Auto-mount removable block devices (USB, CD, HDD)
+# Replaces udiskie with zero RAM overhead -- uses udisks2 directly
+# Runs as a long-lived process (started from Hyprland autostart)
+
+emit_notify() {
+  local dev="$1" action="$2"
+  local label
+  label=$(lsblk -no LABEL "$dev" 2>/dev/null | head -1)
+  [[ -z "$label" ]] && label=$(basename "$dev")
+
+  case "$action" in
+    mount)   notify-send -a "Drives" "Drive mounted" "$label" ;;
+    unmount) notify-send -a "Drives" "Drive removed" "$label" ;;
+  esac
+}
+
+# Mount a new block device
+try_mount() {
+  local devpath="$1"
+  local devname
+  devname=$(udevadm info -p /sys"$devpath" --query=property 2>/dev/null \
+    | awk -F= '/^DEVNAME=/{print $2}')
+  [[ -z "$devname" ]] && return
+
+  # Only mount partitions (not whole disks)
+  local devtype
+  devtype=$(udevadm info -p /sys"$devpath" --query=property 2>/dev/null \
+    | awk -F= '/^DEVTYPE=/{print $2}')
+  [[ "$devtype" != "partition" ]] && return
+
+  # Only mount if it has a filesystem
+  local fs
+  fs=$(lsblk -no FSTYPE "$devname" 2>/dev/null | head -1)
+  [[ -z "$fs" ]] && return
+
+  # Skip if already mounted
+  findmnt -rno SOURCE "$devname" &>/dev/null && return
+
+  udisksctl mount --block-device "$devname" --no-user-interaction &>/dev/null \
+    && emit_notify "$devname" mount
+}
+
+# Watch for block device add/remove events
+stdbuf -oL -- udevadm monitor --udev --subsystem-match=block 2>/dev/null \
+  | while read -r _ _ event devpath _; do
+      case "$event" in
+        add)    try_mount "$devpath" ;;
+        remove) emit_notify "$devpath" unmount ;;
+      esac
+    done

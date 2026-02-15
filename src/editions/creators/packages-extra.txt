@@ -1,0 +1,4 @@
+# smplOS Creators Edition -- extra official-repo packages
+obs-studio
+kdenlive
+gimp

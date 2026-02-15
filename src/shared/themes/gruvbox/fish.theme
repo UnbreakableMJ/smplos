@@ -23,7 +23,7 @@ set -g fish_pager_color_progress 3c3836
 set -g fish_pager_color_prefix 7daea3 --bold --underline
 set -g fish_pager_color_completion d4be98
 set -g fish_pager_color_description 3c3836
-set -g fish_pager_color_selected_background --background=504945
+set -g fish_pager_color_selected_background --background=3c3836
 set -g fish_pager_color_selected_completion d4be98
 set -g fish_pager_color_selected_prefix 7daea3 --bold --underline
-set -g fish_pager_color_selected_description 928374
+set -g fish_pager_color_selected_description 3c3836

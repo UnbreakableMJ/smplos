@@ -1,0 +1,20 @@
+#!/bin/bash
+# Focus an existing window or launch the app if not running
+# Usage: focus-or-launch <window-class> <launch-command...>
+#
+# Examples:
+#   focus-or-launch firefox firefox
+#   focus-or-launch doublecmd doublecmd
+#   focus-or-launch Missioncenter missioncenter
+#   focus-or-launch st-256color "st-wl -A 1.0 -e btop"
+
+CLASS="$1"; shift
+[[ -z "$CLASS" || $# -eq 0 ]] && { echo "Usage: focus-or-launch <class> <command...>" >&2; exit 1; }
+
+if hyprctl -j clients | jq -e \
+  --arg c "$CLASS" '.[] | select((.class // "" | test($c; "i")) or (.initialClass // "" | test($c; "i")))' \
+  >/dev/null 2>&1; then
+    hyprctl dispatch focuswindow "class:(?i)${CLASS}"
+else
+    hyprctl dispatch exec -- "$@"
+fi

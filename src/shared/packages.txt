@@ -17,7 +17,6 @@ gvfs-mtp
 
 # ── Auto-mount (USB, CD, HDD) ────────────────────────────────
 udisks2
-udiskie
 
 # ── Audio ────────────────────────────────────────────────────
 pipewire
@@ -71,6 +70,7 @@ fd
 fzf
 bat
 eza
+yazi
 btop
 fastfetch
 unzip

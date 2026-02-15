@@ -56,9 +56,6 @@ src/iso/offline-repo/*.files.tar.*
 # ── Reference material (3rd-party dotfiles, not our code) ───
 reference/
 
-# ── Sandbox / experiments ───────────────────────────────────
-sandbox/
-
 # ── Scratch / notes (not project docs) ──────────────────────
 prompt.txt
 smplOS.md
@@ -75,4 +72,4 @@ compile_commands.json
 # ── OS junk ─────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-src/Screenshot_20260212_181229.png
+Screenshot_*.png

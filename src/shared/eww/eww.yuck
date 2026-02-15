@@ -249,7 +249,7 @@
             (label :class "usb-device-label" :text {device.label} :halign "start" :limit-width 20)
             (label :class "usb-device-meta" :text "${device.size} -- ${device.path}" :halign "start" :limit-width 30))
           (button :class "usb-eject"
-                  :onclick "udiskie-umount '${device.path}' && notify-send 'Drive ejected' '${device.label}'"
+                  :onclick "udisksctl unmount --block-device '/dev/${device.name}' --no-user-interaction && notify-send 'Drive ejected' '${device.label}'"
                   :tooltip "Safely eject ${device.label}"
             (label :text "󰆴")))))))
 

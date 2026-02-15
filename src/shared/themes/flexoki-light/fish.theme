@@ -26,4 +26,4 @@ set -g fish_pager_color_description 100F0F
 set -g fish_pager_color_selected_background --background=E6E4D9
 set -g fish_pager_color_selected_completion 100F0F
 set -g fish_pager_color_selected_prefix 205EA6 --bold --underline
-set -g fish_pager_color_selected_description 878580
+set -g fish_pager_color_selected_description 100F0F
