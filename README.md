@@ -14,11 +14,11 @@
 
 smplOS is a minimal Arch Linux distribution built around one idea: **simplicity**.
 
-It draws inspiration from projects like [Omarchy](https://omakub.org/) but takes a different path. Where others ship opinions, smplOS ships sensible defaults that stay out of your way. No bloat, no decisions made for you — just a clean, fast, good-looking system that works the moment you boot it.
+It started as an attempt to build a lighter version of Omarchy — same keybindings, same themes, but without the bloat. That contribution was rejected, so we forked and built our own distro. Along the way we rewrote most of the stack: a custom notification center in Rust, a [patched suckless terminal](#terminal-st-wl) that renders inline images at a fraction of Kitty's footprint, a cross-compositor architecture, and a theme system that touches every app on the desktop. What came out the other side isn't Omarchy lite — it's a different OS.
 
 ### Why smplOS?
 
-- **Lightweight.** Under 850 MB of RAM on a cold boot. Every package earns its place.
+- **Lightweight.** Under 800 MB of RAM on a cold boot (Omarchy idles at 1.7 GB). Every package earns its place.
 - **Fast installs.** Fully offline — no internet required. A fresh install completes in under 2 minutes.
 - **Cross-compositor.** Built from the ground up to support multiple compositors. Hyprland (Wayland) ships first, DWM (X11) is next. Shared configs, shared themes, shared keybindings — the compositor is just a thin layer.
 - **One UI toolkit.** EWW powers the bar, widgets, and dialogs. It runs on both X11 and Wayland. No waybar, no polybar, no redundant tools.
@@ -51,9 +51,9 @@ st is our terminal of choice — a suckless terminal patched for the features th
 We also fixed several upstream bugs found in the suckless st codebase:
 
 - **History buffer allocation** — the default scrollback patch pre-allocates the entire buffer (HISTSIZE x columns) at startup, wasting tens of MB. We rewrote it to use page-based lazy allocation (256-line pages, allocated on demand).
-- **HISTSIZE default** — upstream ships with `HISTSIZE = 99999` (~80 MB for a wide terminal). Reduced to 2000 lines, which is plenty for real use.
 - **Page Up/Down not working** — the scrollback patch only bound Shift+PageUp/Down but left plain PageUp/Down doing nothing. Added `MOD_MASK_NONE` bindings so both work.
-- **X11-only patches breaking Wayland** — several patches (e.g. `sixelbyteorder = LSBFirst`) use X11 macros that don't exist in the Wayland build. Identified and disabled them.
+- **Unnecessary X11 libraries on Wayland** — the SIXEL patch links against imlib2, which drags in the entire X11 library chain (libX11, libxcb, libXext, etc.) into a Wayland-only binary. Stripped the dependency tree from 29 to 21 libraries, cutting ~5 MB of RSS.
+- **X11-only patches breaking Wayland** — several patches (e.g. `sixelbyteorder = LSBFirst`, boxdraw, openurlonclick) use X11 macros and structs that don't exist in the Wayland build. Identified and disabled them.
 - **Font fallback crash** — st-wl crashed on launch when no `-f` flag was given. Fixed the default font fallback path.
 - **SIXEL linker errors** — enabling the SIXEL patch in `patches.def.h` alone wasn't enough; the SIXEL source files and imlib2 libs also need uncommenting in `config.mk`.
 
@@ -64,6 +64,12 @@ We also fixed several upstream bugs found in the suckless st codebase:
 smplOS ships with 14 themes inherited and expanded from the Omarchy project. A single `theme-set` command applies colors system-wide — terminal, EWW bar, notifications, Hyprland borders, lock screen, btop, neovim, and VS Code. Every theme includes matching wallpapers and is generated from a single `colors.toml` source of truth.
 
 <a href="images/5-themes.png"><img src="images/5-themes.png" width="720" /></a>
+
+#### Keybindings
+
+smplOS uses the same keybindings as [Omarchy](https://omakub.org/), so migrating from that project is seamless — your muscle memory carries over. Press <kbd>Super</kbd>+<kbd>K</kbd> to open the keybinding cheatsheet overlay at any time. The overlay is **dynamically generated** by parsing `bindings.conf` at runtime, so any keybinding you add or change shows up in the help automatically — no manual docs to maintain.
+
+<a href="images/6-keybindings.png"><img src="images/6-keybindings.png" width="720" /></a>
 
 ---
 
