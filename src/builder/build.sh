@@ -91,6 +91,11 @@ read_package_list() {
 setup_build_env() {
     log_step "Setting up build environment"
     
+    # Enable multilib repo (needed for lib32-* Wine/audio packages)
+    if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+        echo -e '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist' >> /etc/pacman.conf
+    fi
+
     # Initialize pacman keyring
     pacman-key --init
     retry pacman --noconfirm -Sy archlinux-keyring
@@ -120,6 +125,14 @@ collect_packages() {
     read_package_list "$compositor_dir/packages.txt" ALL_PACKAGES
     read_package_list "$SRC_DIR/shared/packages.txt" ALL_PACKAGES
     
+    # Edition extra official packages (iterate all stacked editions)
+    if [[ -n "${EDITIONS:-}" ]]; then
+        IFS=',' read -ra _eds <<< "$EDITIONS"
+        for _ed in "${_eds[@]}"; do
+            read_package_list "$SRC_DIR/editions/$_ed/packages-extra.txt" ALL_PACKAGES
+        done
+    fi
+
     # AUR packages
     if [[ -z "$SKIP_AUR" ]]; then
         read_package_list "$compositor_dir/packages-aur.txt" AUR_PACKAGES
@@ -332,6 +345,9 @@ Server = file:///var/cache/smplos/mirror/offline/
 Include = /etc/pacman.d/mirrorlist
 
 [extra]
+Include = /etc/pacman.d/mirrorlist
+
+[multilib]
 Include = /etc/pacman.d/mirrorlist
 PACMANCONF
 
@@ -584,6 +600,146 @@ build_notif_center() {
     rm -rf "$build_dir"
 
     log_info "notif-center built and installed successfully"
+}
+
+###############################################################################
+# Build kb-center (Rust+Slint keyboard layout manager) from source
+###############################################################################
+
+build_kb_center() {
+    log_step "Building kb-center from source"
+
+    local airootfs="$PROFILE_DIR/airootfs"
+    local kc_src="$SRC_DIR/shared/kb-center"
+
+    if [[ ! -f "$kc_src/Cargo.toml" ]]; then
+        log_warn "kb-center source not found at $kc_src, skipping"
+        return
+    fi
+
+    # ── Source-hash cache: skip build if source hasn't changed ──
+    local bin_cache="/var/cache/smplos/binaries"
+    local src_hash
+    src_hash=$({ find "$kc_src/src" "$kc_src/ui" -type f -exec sha256sum {} + 2>/dev/null; \
+        sha256sum "$kc_src/Cargo.toml" "$kc_src/Cargo.lock" "$kc_src/build.rs" 2>/dev/null; \
+    } | sort | sha256sum | cut -d' ' -f1)
+    local cache_key="kb-center-${src_hash}"
+
+    if [[ -f "$bin_cache/$cache_key" ]]; then
+        log_info "kb-center source unchanged, using cached binary ($cache_key)"
+        install -Dm755 "$bin_cache/$cache_key" "$airootfs/usr/local/bin/kb-center"
+        install -Dm755 "$bin_cache/$cache_key" "$airootfs/root/smplos/bin/kb-center"
+        return 0
+    fi
+
+    # Install Rust toolchain and build deps (likely already installed by notif-center)
+    pacman --noconfirm --needed -S rust cargo cmake pkgconf fontconfig freetype2 \
+        libxkbcommon wayland libglvnd mesa 2>/dev/null || true
+
+    # Build in a temp dir to avoid polluting the source tree
+    local build_dir="/tmp/kb-center-build"
+    rm -rf "$build_dir"
+    cp -r "$kc_src" "$build_dir"
+    cd "$build_dir"
+
+    log_info "Compiling kb-center (release)..."
+    cargo build --release
+
+    local bin_path="$build_dir/target/release/kb-center"
+    if [[ ! -x "$bin_path" ]]; then
+        log_warn "kb-center binary not found after build, skipping"
+        cd "$SRC_DIR"
+        rm -rf "$build_dir"
+        return
+    fi
+
+    # Install binary into the ISO
+    install -Dm755 "$bin_path" "$airootfs/usr/local/bin/kb-center"
+    strip "$airootfs/usr/local/bin/kb-center"
+
+    # Also stage for the installer to deploy to the installed system
+    install -Dm755 "$bin_path" "$airootfs/root/smplos/bin/kb-center"
+    strip "$airootfs/root/smplos/bin/kb-center"
+
+    # Save to cache for future builds
+    mkdir -p "$bin_cache"
+    cp "$airootfs/usr/local/bin/kb-center" "$bin_cache/$cache_key"
+    log_info "Cached kb-center binary as $cache_key"
+
+    cd "$SRC_DIR"
+    rm -rf "$build_dir"
+
+    log_info "kb-center built and installed successfully"
+}
+
+###############################################################################
+# Build disp-center (Rust+Slint display manager) from source
+###############################################################################
+
+build_disp_center() {
+    log_step "Building disp-center from source"
+
+    local airootfs="$PROFILE_DIR/airootfs"
+    local dc_src="$SRC_DIR/shared/disp-center"
+
+    if [[ ! -f "$dc_src/Cargo.toml" ]]; then
+        log_warn "disp-center source not found at $dc_src, skipping"
+        return
+    fi
+
+    # ── Source-hash cache: skip build if source hasn't changed ──
+    local bin_cache="/var/cache/smplos/binaries"
+    local src_hash
+    src_hash=$({ find "$dc_src/src" "$dc_src/ui" -type f -exec sha256sum {} + 2>/dev/null; \
+        sha256sum "$dc_src/Cargo.toml" "$dc_src/Cargo.lock" "$dc_src/build.rs" 2>/dev/null; \
+    } | sort | sha256sum | cut -d' ' -f1)
+    local cache_key="disp-center-${src_hash}"
+
+    if [[ -f "$bin_cache/$cache_key" ]]; then
+        log_info "disp-center source unchanged, using cached binary ($cache_key)"
+        install -Dm755 "$bin_cache/$cache_key" "$airootfs/usr/local/bin/disp-center"
+        install -Dm755 "$bin_cache/$cache_key" "$airootfs/root/smplos/bin/disp-center"
+        return 0
+    fi
+
+    # Install Rust toolchain and build deps (likely already installed by notif-center)
+    pacman --noconfirm --needed -S rust cargo cmake pkgconf fontconfig freetype2 \
+        libxkbcommon wayland libglvnd mesa 2>/dev/null || true
+
+    # Build in a temp dir to avoid polluting the source tree
+    local build_dir="/tmp/disp-center-build"
+    rm -rf "$build_dir"
+    cp -r "$dc_src" "$build_dir"
+    cd "$build_dir"
+
+    log_info "Compiling disp-center (release)..."
+    cargo build --release
+
+    local bin_path="$build_dir/target/release/disp-center"
+    if [[ ! -x "$bin_path" ]]; then
+        log_warn "disp-center binary not found after build, skipping"
+        cd "$SRC_DIR"
+        rm -rf "$build_dir"
+        return
+    fi
+
+    # Install binary into the ISO
+    install -Dm755 "$bin_path" "$airootfs/usr/local/bin/disp-center"
+    strip "$airootfs/usr/local/bin/disp-center"
+
+    # Also stage for the installer to deploy to the installed system
+    install -Dm755 "$bin_path" "$airootfs/root/smplos/bin/disp-center"
+    strip "$airootfs/root/smplos/bin/disp-center"
+
+    # Save to cache for future builds
+    mkdir -p "$bin_cache"
+    cp "$airootfs/usr/local/bin/disp-center" "$bin_cache/$cache_key"
+    log_info "Cached disp-center binary as $cache_key"
+
+    cd "$SRC_DIR"
+    rm -rf "$build_dir"
+
+    log_info "disp-center built and installed successfully"
 }
 
 ###############################################################################
@@ -1219,6 +1375,8 @@ main() {
     setup_airootfs
     build_st
     build_notif_center
+    build_kb_center
+    build_disp_center
     setup_boot
     build_iso
     

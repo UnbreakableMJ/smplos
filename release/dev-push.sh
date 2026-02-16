@@ -19,8 +19,8 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[push]${NC} $*"; }
 
 # Clean and recreate
-rm -rf "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center}
-mkdir -p "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center}
+rm -rf "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center}
+mkdir -p "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center}
 
 # EWW
 cp -r "$SRC_DIR/shared/eww/"* "$SHARE/eww/"
@@ -66,6 +66,39 @@ if [[ -f "$NOTIF_DIR/Cargo.toml" ]]; then
     fi
 else
     log "notif-center: source not found, skipping"
+fi
+
+# Keyboard Center (build + copy binary)
+KC_DIR="$SRC_DIR/shared/kb-center"
+KC_BIN="$KC_DIR/target/release/kb-center"
+if [[ -f "$KC_DIR/Cargo.toml" ]]; then
+    log "Building kb-center..."
+    (cd "$KC_DIR" && cargo build --release 2>&1 | tail -1)
+    if [[ -f "$KC_BIN" ]]; then
+        cp "$KC_BIN" "$SHARE/kb-center/"
+        log "kb-center: binary copied"
+    else
+        log "kb-center: build FAILED"
+    fi
+else
+    log "kb-center: source not found, skipping"
+fi
+
+# disp-center display manager (Rust+Slint display settings)
+DC_DIR="$SRC_DIR/shared/disp-center"
+DC_BIN="$DC_DIR/target/release/disp-center"
+if [[ -f "$DC_DIR/Cargo.toml" ]]; then
+    mkdir -p "$SHARE/disp-center"
+    log "Building disp-center..."
+    (cd "$DC_DIR" && cargo build --release 2>&1 | tail -1)
+    if [[ -f "$DC_BIN" ]]; then
+        cp "$DC_BIN" "$SHARE/disp-center/"
+        log "disp-center: binary copied"
+    else
+        log "disp-center: build FAILED"
+    fi
+else
+    log "disp-center: source not found at $DC_DIR, skipping"
 fi
 
 # st-wl terminal (build from source, keep pinned VERSION from config.mk)

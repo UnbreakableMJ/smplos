@@ -175,8 +175,10 @@ char *termclass = "terminal";
 unsigned int tabspaces = 8;
 
 #if ALPHA_PATCH
-/* bg opacity */
-#define DEFAULT_ALPHA 0.8
+/* bg opacity — set to 1.0 so Hyprland's per-theme opacity rule is the sole
+ * source of transparency.  st's own alpha would multiply on top, causing
+ * double-transparency and preventing theme switching from working correctly. */
+#define DEFAULT_ALPHA 1.0
 float alpha = DEFAULT_ALPHA;
 uint8_t term_alpha = (uint8_t)(DEFAULT_ALPHA*255.0);
 #if ALPHA_GRADIENT_PATCH
@@ -197,35 +199,38 @@ float alphaUnfocused = 0.6;
 char *xdndescchar = " !\"#$&'()*;<>?[\\]^`{|}~";
 #endif // DRAG_AND_DROP_PATCH
 
-/* Terminal colors (16 first used in escape sequence) */
+/* Terminal colors (16 first used in escape sequence)
+ * These are compile-time defaults — theme-set-st overrides them at runtime
+ * via OSC escape sequences.  Keep these neutral/dark so new terminals look
+ * reasonable for the brief moment before OSC sequences arrive. */
 static const char *colorname[] = {
-	/* 8 normal colors */
-	[0] = "#2d2d2d", /* black   */
-	[1] = "#f2777a", /* red     */
-	[2] = "#99cc99", /* green   */
-	[3] = "#ffcc66", /* yellow  */
-	[4] = "#6699cc", /* blue    */
-	[5] = "#cc99cc", /* magenta */
-	[6] = "#66cccc", /* cyan    */
-	[7] = "#d3d0c8", /* white   */
+	/* 8 normal colors — standard ANSI */
+	[0] = "#000000", /* black   */
+	[1] = "#cc0000", /* red     */
+	[2] = "#4e9a06", /* green   */
+	[3] = "#c4a000", /* yellow  */
+	[4] = "#3465a4", /* blue    */
+	[5] = "#75507b", /* magenta */
+	[6] = "#06989a", /* cyan    */
+	[7] = "#d3d7cf", /* white   */
 
 	/* 8 bright colors */
-	[8]  = "#747369", /* black   */
-	[9]  = "#f2777a", /* red     */
-	[10] = "#99cc99", /* green   */
-	[11] = "#ffcc66", /* yellow  */
-	[12] = "#6699cc", /* blue    */
-	[13] = "#cc99cc", /* magenta */
-	[14] = "#66cccc", /* cyan    */
-	[15] = "#f2f0ec", /* white   */
+	[8]  = "#555753", /* black   */
+	[9]  = "#ef2929", /* red     */
+	[10] = "#8ae234", /* green   */
+	[11] = "#fce94f", /* yellow  */
+	[12] = "#729fcf", /* blue    */
+	[13] = "#ad7fa8", /* magenta */
+	[14] = "#34e2e2", /* cyan    */
+	[15] = "#eeeeec", /* white   */
 
 	[255] = 0,
 
 	/* more colors can be added after 255 to use with DefaultXX */
-	"#add8e6", /* 256 -> cursor */
-	"#555555", /* 257 -> rev cursor*/
-	"#300a24", /* 258 -> bg */
-	"#e5e5e5", /* 259 -> fg */
+	"#d3d7cf", /* 256 -> cursor */
+	"#555753", /* 257 -> rev cursor*/
+	"#000000", /* 258 -> bg */
+	"#d3d7cf", /* 259 -> fg */
 };
 
 

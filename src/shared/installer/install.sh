@@ -57,6 +57,41 @@ if [[ -d "$SMPLOS_PATH/config" ]]; then
   ls -la "$HOME/.config/eww/" 2>/dev/null || echo "    WARNING: eww config dir missing!"
 fi
 
+# Configure extra keyboard layout (if user chose one during install)
+if [[ -n "${SMPLOS_EXTRA_LAYOUT:-}" ]]; then
+  echo "==> Configuring extra keyboard layout: ${SMPLOS_EXTRA_LAYOUT}${SMPLOS_EXTRA_VARIANT:+ ($SMPLOS_EXTRA_VARIANT)}..."
+
+  # Determine the primary XKB layout from the system's configured keymap
+  primary_xkb=$(localectl status 2>/dev/null | awk '/X11 Layout/{print $3}')
+  [[ -z "$primary_xkb" ]] && primary_xkb="us"
+
+  # Update Hyprland input.conf with both layouts
+  input_conf="$HOME/.config/hypr/input.conf"
+  if [[ -f "$input_conf" ]]; then
+    sed -i "s/^    kb_layout = .*/    kb_layout = ${primary_xkb},${SMPLOS_EXTRA_LAYOUT}/" "$input_conf"
+    sed -i "s/^    kb_variant = .*/    kb_variant = ,${SMPLOS_EXTRA_VARIANT:-}/" "$input_conf"
+    # Add grp:alt_shift_toggle to kb_options (keep existing options like compose:caps)
+    current_opts=$(grep '^\s*kb_options' "$input_conf" | sed 's/.*= *//')
+    if [[ -n "$current_opts" && "$current_opts" != *"grp:"* ]]; then
+      sed -i "s/^    kb_options = .*/    kb_options = ${current_opts},grp:alt_shift_toggle/" "$input_conf"
+    elif [[ -z "$current_opts" ]]; then
+      sed -i "s/^    kb_options = .*/    kb_options = grp:alt_shift_toggle/" "$input_conf"
+    fi
+    echo "    Hyprland input.conf updated"
+  fi
+
+  # Add Alt+Shift keybinding for layout switching to bindings.conf
+  bindings_conf="$HOME/.config/hypr/bindings.conf"
+  if [[ -f "$bindings_conf" ]] && ! grep -q "switchxkblayout" "$bindings_conf"; then
+    cat >> "$bindings_conf" <<'KBBIND'
+
+# Keyboard layout switching (also available via Alt+Shift through XKB options)
+bindd = ALT, SHIFT_L, Switch keyboard layout, exec, hyprctl switchxkblayout current next
+KBBIND
+    echo "    Keybinding added to bindings.conf"
+  fi
+fi
+
 # Deploy theme system
 # Always ensure all stock themes are deployed (skel may only have partial data)
 if [[ -d "$SMPLOS_PATH/themes" ]]; then

@@ -14,15 +14,15 @@ configuration {
 /*****----- Global Properties -----*****/
 * {
     font:                        "JetBrainsMono Nerd Font 10";
-    background:                  rgba(30,30,46,0.60);
-    background-alt:              rgba(69,71,90,0.60);
+    background:                  rgba(30,30,46,0.50);
+    background-alt:              rgba(69,71,90,0.50);
     background-solid:            #1e1e2e;
     foreground:                  #cdd6f4;
     foreground-dim:              #585b70;
     selected:                    #89b4fa;
     active:                      #89b4fa;
     urgent:                      #f38ba8;
-    border-rad:                  3px;
+    border-rad:                  8px;
     background-color:            transparent;
     text-color:                  @foreground;
 

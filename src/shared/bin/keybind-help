@@ -29,6 +29,10 @@ if [[ ! -f "$CACHE" ]] || [[ "$CONF" -nt "$CACHE" ]]; then
     gsub(/ /, "+", mods); gsub(/^\+|\+$/, "", mods)
     combo = (mods != "" && key != "") ? mods "+" key : (mods != "" ? mods : key)
 
+    # Strip modifier keysyms used in modkeys-only binds (e.g. Shift_L, Alt_L)
+    gsub(/\+?(Shift_L|Alt_L|Super_L|Control_L|SHIFT_L|ALT_L|SUPER_L|CTRL_L)$/, "", combo)
+    gsub(/^\+/, "", combo)
+
     # Friendly names
     gsub(/SUPER/, "Super", combo); gsub(/SHIFT/, "Shift", combo)
     gsub(/CTRL/, "Ctrl", combo); gsub(/ALT/, "Alt", combo)

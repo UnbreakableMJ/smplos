@@ -180,6 +180,8 @@ chroot_bash() {
   HOME=/home/$SMPLOS_USER \
     arch-chroot -u $SMPLOS_USER /mnt/ \
     env SMPLOS_CHROOT_INSTALL=1 \
+    SMPLOS_EXTRA_LAYOUT="$(<user_extra_layout.txt)" \
+    SMPLOS_EXTRA_VARIANT="$(<user_extra_variant.txt)" \
     USER="$SMPLOS_USER" \
     HOME="/home/$SMPLOS_USER" \
     /bin/bash "$@"

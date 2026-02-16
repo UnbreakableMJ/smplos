@@ -1,0 +1,101 @@
+#!/bin/bash
+# Sync keyboard layouts from OS config on startup.
+# Source of truth: ~/.config/hypr/input.conf
+# Applies layouts to the running compositor (runtime) and keeps input.conf normalized.
+
+set -u
+
+LOG_FILE="${XDG_RUNTIME_DIR:-/tmp}/kb-sync.log"
+log() {
+    printf '[%s] %s\n' "$(date +'%F %T')" "$*" >> "$LOG_FILE"
+}
+
+INPUT_CONF="$HOME/.config/hypr/input.conf"
+
+if [[ ! -f "$INPUT_CONF" ]]; then
+    exit 0
+fi
+
+log "start: input_conf=$INPUT_CONF"
+
+parse_input_conf() {
+    local conf="$1"
+    local l=""
+    local v=""
+    [[ -f "$conf" ]] || { echo "|"; return; }
+    l=$(sed -n 's/^\s*kb_layout\s*=\s*//p' "$conf" | head -n1)
+    v=$(sed -n 's/^\s*kb_variant\s*=\s*//p' "$conf" | head -n1)
+    l="${l//[[:space:]]/}"
+    v="${v//[[:space:]]/}"
+    echo "$l|$v"
+}
+
+conf_pair=$(parse_input_conf "$INPUT_CONF")
+conf_layouts="${conf_pair%%|*}"
+conf_variants="${conf_pair#*|}"
+
+layouts="$conf_layouts"
+variants="$conf_variants"
+
+if [[ -z "$layouts" ]]; then
+    log "no layouts resolved from input.conf, exiting"
+    exit 0
+fi
+
+log "resolved: source=input.conf layouts='$layouts' variants='$variants'"
+
+# Only one layout? Nothing to sync (compositor default is fine)
+if [[ "$layouts" != *","* ]]; then
+    log "single-layout ('${layouts}'), exiting"
+    exit 0
+fi
+
+# ── Update Hyprland input.conf (persistent across reboots) ──
+if [[ -f "$INPUT_CONF" ]]; then
+    sed -i "s/^\(\s*\)kb_layout\s*=.*/\1kb_layout = $layouts/" "$INPUT_CONF"
+    sed -i "s/^\(\s*\)kb_variant\s*=.*/\1kb_variant = $variants/" "$INPUT_CONF"
+    sed -i "s/^\(\s*\)kb_options\s*=.*/\1kb_options = compose:caps,grp:alt_shift_toggle/" "$INPUT_CONF"
+    sed -i "s/^\(\s*\)kb_rules\s*=.*/\1kb_rules = evdev/" "$INPUT_CONF"
+fi
+
+# ── Apply to running compositor (live, immediate) ──
+if [[ -n "$WAYLAND_DISPLAY" ]] || [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
+    # Hyprland can spawn exec-once before keyboards are fully ready.
+    # Wait a bit, then apply and verify that switching works.
+    for _ in {1..30}; do
+        if hyprctl -j devices 2>/dev/null | jq -e '.keyboards | map(select((.name | test("power|button"; "i") | not))) | length > 0' >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.2
+    done
+
+    for attempt in {1..8}; do
+        hyprctl --batch "keyword input:kb_rules evdev ; keyword input:kb_options compose:caps,grp:alt_shift_toggle ; keyword input:kb_layout $layouts ; keyword input:kb_variant $variants" >/dev/null 2>&1
+        sleep 0.15
+
+        main_kb=$(hyprctl -j devices 2>/dev/null | jq -r '.keyboards[] | select(.main == true) | .name' | head -n1)
+        [[ -z "$main_kb" || "$main_kb" == "null" ]] && main_kb="current"
+
+        before_idx=$(hyprctl -j devices 2>/dev/null | jq -r --arg kb "$main_kb" '(.keyboards[] | select(.name == $kb) | .active_keymap_index) // 0' | head -n1)
+        hyprctl switchxkblayout "$main_kb" next >/dev/null 2>&1
+        sleep 0.05
+        after_idx=$(hyprctl -j devices 2>/dev/null | jq -r --arg kb "$main_kb" '(.keyboards[] | select(.name == $kb) | .active_keymap_index) // 0' | head -n1)
+
+        if [[ "$before_idx" != "$after_idx" ]]; then
+            hyprctl switchxkblayout "$main_kb" prev >/dev/null 2>&1
+            log "success: attempt=$attempt main=$main_kb before=$before_idx after=$after_idx"
+            exit 0
+        fi
+
+        log "retry: attempt=$attempt main=$main_kb before=$before_idx after=$after_idx"
+        sleep 0.25
+    done
+
+    log "failed: switching did not become active"
+elif [[ -n "$DISPLAY" ]]; then
+    args=(-layout "$layouts")
+    stripped="${variants//,/}"
+    [[ -n "$stripped" ]] && args+=(-variant "$variants")
+    setxkbmap "${args[@]}" 2>/dev/null
+    log "x11: setxkbmap applied"
+fi

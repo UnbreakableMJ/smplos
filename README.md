@@ -8,87 +8,111 @@
   Minimal &bull; Lightweight &bull; Offline-first &bull; Cross-compositor
 </p>
 
+<p align="center">
+  <a href="DEVELOPMENT.md">Development Guide</a>
+</p>
+
 ---
 
 ## What is smplOS?
 
-smplOS is a minimal Arch Linux distribution built around one idea: **simplicity**.
+smplOS is a minimal Arch Linux distro built around one idea: **simplicity**.
 
-It started as an attempt to build a lighter version of Omarchy — same keybindings, same themes, but without the bloat. That contribution was rejected, so we forked and built our own distro. Along the way we rewrote most of the stack: a custom notification center in Rust, a [patched suckless terminal](#terminal-st-wl) that renders inline images at a fraction of Kitty's footprint, a cross-compositor architecture, and a theme system that touches every app on the desktop. What came out the other side isn't Omarchy lite — it's a different OS.
+It started as an attempt to build a lighter version of Omarchy - same keybindings, same themes, but without the bloat. That contribution was rejected, so we forked and built our own distro. Along the way we rewrote most of the stack: a [suite of lightweight GUI apps in Rust](#rust-app-suite), a [patched suckless terminal](#terminal-st-wl) that renders inline images at a fraction of Kitty's footprint, a cross-compositor architecture, and a theme system that touches every app on the desktop. What came out the other side isn't Omarchy lite - it's a different OS.
 
 ### Why smplOS?
 
 - **Lightweight.** Under 800 MB of RAM on a cold boot (Omarchy idles at 1.7 GB). Every package earns its place.
-- **Fast installs.** Fully offline — no internet required. A fresh install completes in under 2 minutes.
-- **Cross-compositor.** Built from the ground up to support multiple compositors. Hyprland (Wayland) ships first, DWM (X11) is next. Shared configs, shared themes, shared keybindings — the compositor is just a thin layer.
+- **Fast installs.** Fully offline - no internet required. A fresh install completes in under 2 minutes.
+- **Cross-compositor.** Built from the ground up to support multiple compositors. Hyprland (Wayland) ships first, [DWM (X11) is next](DWM-X11.md). Shared configs, shared themes, shared keybindings - the compositor is just a thin layer.
 - **One UI toolkit.** EWW powers the bar, widgets, and dialogs. It runs on both X11 and Wayland. No waybar, no polybar, no redundant tools.
-- **14 built-in themes.** One command switches colors across the entire system — terminal, bar, notifications, borders, lock screen, and editor.
+- **14 built-in themes.** One command switches colors across the entire system - terminal, bar, notifications, borders, lock screen, and editor.
 
 ---
 
 #### Start Menu
 
-The launcher is built with Rofi and styled to match the active theme. Tap <kbd>Super</kbd> to open it — it searches installed apps, does basic math, and closes on selection. No dock, no taskbar, no wasted pixels. Just a fast, keyboard-driven menu that stays out of your way until you need it.
+The launcher is built with Rofi and styled to match the active theme. Tap <kbd>Super</kbd> to open it - it searches installed apps, does basic math, and closes on selection. No dock, no taskbar, no wasted pixels. Just a fast, keyboard-driven menu that stays out of your way until you need it.
 
 <a href="images/1-start-menu.png"><img src="images/1-start-menu.png" width="720" /></a>
 
 #### Memory Footprint
 
-A cold boot sits under 800 MB of RAM with the full desktop running — bar, notifications, compositor, and all background services. Unlike other lightweight distros that sacrifice usability to hit low numbers, smplOS keeps quality-of-life features like auto-mount, theme switching, a notification center, and a full app launcher. Light enough for a 2 GB VM, comfortable enough for daily driving.
+A cold boot sits under 800 MB of RAM with the full desktop running - bar, notifications, compositor, and all background services. Unlike other lightweight distros that sacrifice usability to hit low numbers, smplOS keeps quality-of-life features like auto-mount, theme switching, a notification center, and a full app launcher. Light enough for a 2 GB VM, comfortable enough for daily driving.
 
 <a href="images/2-mem.png"><img src="images/2-mem.png" width="720" /></a>
 
-#### Notification Center
-
-We couldn't find a notification center that met our requirements: low RAM usage, works on both X11 and Wayland, and looks modern out of the box. So we wrote one from scratch in Rust. It integrates with Dunst, groups notifications by app, supports dismiss and clear-all, and uses a fraction of the memory that Electron-based alternatives need.
-
-<a href="images/3-notif-center.png"><img src="images/3-notif-center.png" width="720" /></a>
-
 #### Terminal (st-wl)
 
-st is our terminal of choice — a suckless terminal patched for the features that matter. It starts in milliseconds and idles at around 25 MB of RAM. We added SIXEL image support, scrollback, clipboard integration, Page Up/Down, and alpha transparency. The result is a terminal that can display inline images just like Kitty (~350 MB), but at a fraction of the footprint. Every fix was made in `config.def.h` following the suckless philosophy: if you don't need it, it doesn't exist.
+st is our terminal of choice - a suckless terminal patched for the features that matter. It starts in milliseconds and idles at around 25 MB of RAM. We added SIXEL image support, scrollback, clipboard integration, Page Up/Down, and alpha transparency. The result is a terminal that can display inline images just like Kitty (~350 MB), but at a fraction of the footprint. Every fix was made in `config.def.h` following the suckless philosophy: if you don't need it, it doesn't exist.
 
-We also fixed several upstream bugs found in the suckless st codebase:
+We also fixed several upstream bugs in the suckless st codebase:
 
-- **History buffer allocation** — the default scrollback patch pre-allocates the entire buffer (HISTSIZE x columns) at startup, wasting tens of MB. We rewrote it to use page-based lazy allocation (256-line pages, allocated on demand).
-- **Page Up/Down not working** — the scrollback patch only bound Shift+PageUp/Down but left plain PageUp/Down doing nothing. Added `MOD_MASK_NONE` bindings so both work.
-- **Unnecessary X11 libraries on Wayland** — the SIXEL patch links against imlib2, which drags in the entire X11 library chain (libX11, libxcb, libXext, etc.) into a Wayland-only binary. Stripped the dependency tree from 29 to 21 libraries, cutting ~5 MB of RSS.
-- **X11-only patches breaking Wayland** — several patches (e.g. `sixelbyteorder = LSBFirst`, boxdraw, openurlonclick) use X11 macros and structs that don't exist in the Wayland build. Identified and disabled them.
-- **Font fallback crash** — st-wl crashed on launch when no `-f` flag was given. Fixed the default font fallback path.
-- **SIXEL linker errors** — enabling the SIXEL patch in `patches.def.h` alone wasn't enough; the SIXEL source files and imlib2 libs also need uncommenting in `config.mk`.
+- **History buffer allocation** - the default scrollback patch pre-allocates the entire buffer (HISTSIZE x columns) at startup, wasting tens of MB. We rewrote it to use page-based lazy allocation (256-line pages, allocated on demand).
+- **Page Up/Down not working** - the scrollback patch only bound Shift+PageUp/Down but left plain PageUp/Down doing nothing. Added `MOD_MASK_NONE` bindings so both work.
+- **Unnecessary X11 libraries on Wayland** - the SIXEL patch links against imlib2, which drags in the entire X11 library chain (libX11, libxcb, libXext, etc.) into a Wayland-only binary. Stripped the dependency tree from 29 to 21 libraries, cutting ~5 MB of RSS.
+- **X11-only patches breaking Wayland** - several patches (e.g. `sixelbyteorder = LSBFirst`, boxdraw, openurlonclick) use X11 macros and structs that don't exist in the Wayland build. Identified and disabled them.
+- **Font fallback crash** - st-wl crashed on launch when no `-f` flag was given. Fixed the default font fallback path.
+- **SIXEL linker errors** - enabling the SIXEL patch in `patches.def.h` alone wasn't enough; the SIXEL source files and imlib2 libs also need uncommenting in `config.mk`.
 
 <a href="images/4.term.png"><img src="images/4.term.png" width="720" /></a>
 
 #### Themes
 
-smplOS ships with 14 themes inherited and expanded from the Omarchy project. A single `theme-set` command applies colors system-wide — terminal, EWW bar, notifications, Hyprland borders, lock screen, btop, neovim, and VS Code. Every theme includes matching wallpapers and is generated from a single `colors.toml` source of truth.
+smplOS ships with 14 themes inherited and expanded from the Omarchy project. A single `theme-set` command applies colors system-wide - terminal, EWW bar, notifications, Hyprland borders, lock screen, btop, neovim, and VS Code. Every theme includes matching wallpapers and is generated from a single `colors.toml` source of truth.
 
 <a href="images/5-themes.png"><img src="images/5-themes.png" width="720" /></a>
 
 #### Keybindings
 
-smplOS uses the same keybindings as [Omarchy](https://omakub.org/), so migrating from that project is seamless — your muscle memory carries over. Press <kbd>Super</kbd>+<kbd>K</kbd> to open the keybinding cheatsheet overlay at any time. The overlay is **dynamically generated** by parsing `bindings.conf` at runtime, so any keybinding you add or change shows up in the help automatically — no manual docs to maintain.
+smplOS uses the same keybindings as [Omarchy](https://omakub.org/), so migrating from that project is seamless - your muscle memory carries over. Press <kbd>Super</kbd>+<kbd>K</kbd> to open the keybinding cheatsheet overlay at any time. The overlay is **dynamically generated** by parsing `bindings.conf` at runtime, so any keybinding you add or change shows up in the help automatically - no manual docs to maintain.
 
 <a href="images/6-keybindings.png"><img src="images/6-keybindings.png" width="720" /></a>
 
 ---
 
+### Rust App Suite
+
+Linux has no shortage of CLI tools, but when it comes to graphical settings panels that are lightweight, Wayland-native, and theme-aware, the options are slim. Most existing tools are either GTK/Qt monoliths that pull in hundreds of megabytes, Electron wrappers, or they just don't exist for tiling Wayland compositors. So we wrote our own.
+
+The smplOS app suite is a set of purpose-built GUI apps written in **Rust** with the **Slint** UI framework. Each app is a single static binary under 5 MB, starts in milliseconds, integrates with the smplOS theme system, and works on both X11 and Wayland. They replace functionality that mainstream desktops take for granted but that tiling WM users have historically gone without.
+
+#### Notification Center
+
+A notification hub that collects and groups desktop notifications by app. Supports dismiss, clear-all, and scrollable history. Integrates with Dunst over D-Bus. We built this because every existing notification center was either Electron-based (heavy), GNOME-only, or lacked grouping. Ours idles at under 10 MB of RAM.
+
+<a href="images/3-notif-center.png"><img src="images/3-notif-center.png" width="720" /></a>
+
+#### Display Manager
+
+A graphical display configuration panel. Detects connected monitors via Hyprland IPC, shows resolution, refresh rate, scale, and position for each display, and lets you apply changes live. No external dependencies - just `hyprctl` under the hood. Replaces the need for `wlr-randr` CLI or a full KDE/GNOME settings app just to rearrange monitors.
+
+<a href="images/7-displaymgr.png"><img src="images/7-displaymgr.png" width="720" /></a>
+
+#### Keyboard Manager
+
+A keyboard layout and input configuration panel. Shows active layouts, lets you add/remove languages, toggle NumLock behavior, and adjust repeat rate and delay - all applied live via `hyprctl keyword`. Previously this required hand-editing `input.conf` and reloading the compositor. Now it's a click.
+
+<a href="images/8-keyboard.png"><img src="images/8-keyboard.png" width="720" /></a>
+
+---
+
 ### Design Decisions
 
-Every tool in smplOS was chosen to work across compositors — Wayland and X11 — so the OS feels identical regardless of which one you run.
+Every tool in smplOS was chosen to work across compositors (Wayland and X11) so the OS feels identical regardless of which one you run.
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| **Bar & widgets** | EWW | GTK3-based — runs natively on both X11 and Wayland. One codebase for bar, launcher, theme picker, and keybind help. Replaces waybar, polybar, and rofi. |
+| **Bar & widgets** | EWW | GTK3-based, runs natively on both X11 and Wayland. One codebase for bar, launcher, theme picker, and keybind help. Replaces waybar, polybar, and rofi. |
 | **Launcher** | Rofi | Wayland fork (lbonn/rofi) and X11 original share the same config format and theming. One theme file, two backends. |
-| **Terminal** | st / st-wl | Suckless st has an X11 build and a Wayland port (marchaesen/st-wl). Same config.h, same patches, same look. Starts in ~5ms and uses ~4 MB of RAM — critical for staying under the 850 MB cold-boot target. |
+| **Terminal** | st / st-wl | Suckless st has an X11 build and a Wayland port (marchaesen/st-wl). Same config.h, same patches, same look. Starts in ~5ms and uses ~4 MB of RAM - critical for staying under the 850 MB cold-boot target. |
 | **Notifications** | Dunst | Works on both X11 and Wayland with the same config. Lightweight, themeable, no dependencies on a specific compositor. |
 
 The rule is simple: if a tool only works on one display server, it doesn't ship in `src/shared/`. Compositor-specific code stays in `src/compositors/<name>/` and is kept as thin as possible.
 
 ### Editions
 
-smplOS ships in focused editions that **stack on top of each other**. Pick the ones you need — they all merge cleanly:
+smplOS ships in focused editions that **stack on top of each other**. Pick the ones you need - they all merge cleanly:
 
 | Flag | Edition | Focus | Example apps |
 |------|---------|-------|-------------|
@@ -145,13 +169,13 @@ Or open the theme picker from the start menu's Settings tab.
 
 ## Architecture
 
-smplOS separates shared infrastructure from compositor-specific configuration. The goal is maximum code reuse — compositors are a thin layer on top of a shared foundation.
+smplOS separates shared infrastructure from compositor-specific config. The goal is maximum code reuse - compositors are a thin layer on top of a shared foundation.
 
 ```
 src/
   shared/              Everything here works on ALL compositors
     bin/               User-facing scripts (installed to /usr/local/bin/)
-    eww/               EWW bar and widgets (GTK3 -- works on X11 + Wayland)
+    eww/               EWW bar and widgets (GTK3 - works on X11 + Wayland)
     configs/smplos/    Cross-compositor configs (bindings.conf, branding)
     themes/            14 themes with templates for all apps
     installer/         OS installer
@@ -169,7 +193,7 @@ release/               VM testing tools (dev-push, test-iso, QEMU scripts)
 
 - **Simple over opinionated.** Provide good defaults, not forced workflows.
 - **Cross-compositor first.** Every feature must work across Hyprland (Wayland) and DWM (X11). Compositor-specific code stays in `src/compositors/<name>/`.
-- **EWW is the UI layer.** Bar, widgets, dialogs — all EWW. It runs on both GTK3/X11 and GTK3/Wayland.
+- **EWW is the UI layer.** Bar, widgets, dialogs - all EWW. It runs on both GTK3/X11 and GTK3/Wayland.
 - **One theme system.** `theme-set` applies colors to EWW, terminals, btop, notifications, compositor borders, lock screen, and neovim.
 - **bindings.conf is the single source of truth** for keybindings across all compositors.
 - **Minimal packages.** One terminal, one launcher, one bar. No redundant tools.
@@ -197,14 +221,14 @@ The launcher uses rofi's native modi system with two tabs:
 | **Apps** | <kbd>Alt</kbd>+<kbd>A</kbd> | All desktop applications (drun) |
 | **Settings** | <kbd>Alt</kbd>+<kbd>S</kbd> | System settings entries (Wi-Fi, Bluetooth, Display, Audio, Themes, etc.) |
 
-Hotkeys jump to the tab **and clear the search filter** — so you get a fresh list every time. The mode-switcher tabs at the bottom are also clickable.
+Hotkeys jump to the tab **and clear the search filter** so you get a fresh list every time. The mode-switcher tabs at the bottom are also clickable.
 
 ### How it works
 
-- **`launcher`** — wrapper script that runs rofi with native modi (`drun` + `settings:rofi-settings-src`). Handles <kbd>Alt</kbd>+<kbd>A</kbd>/<kbd>Alt</kbd>+<kbd>S</kbd> via `kb-custom` exit codes, restarting rofi on the target mode.
-- **`rofi-settings-src`** — rofi script-mode source that reads from the app cache, filtering for settings entries.
-- **`smplos-launcher.rasi.tpl`** — theme template with `rgba()` transparency using `popup_opacity` from `colors.toml`, matching the look of other popup panels.
-- **Hyprland layerrules** — `animation slide left`, `blur on`, `ignore_alpha 0.1` on namespace `rofi`.
+- **`launcher`** - wrapper script that runs rofi with native modi (`drun` + `settings:rofi-settings-src`). Handles <kbd>Alt</kbd>+<kbd>A</kbd>/<kbd>Alt</kbd>+<kbd>S</kbd> via `kb-custom` exit codes, restarting rofi on the target mode.
+- **`rofi-settings-src`** - rofi script-mode source that reads from the app cache, filtering for settings entries.
+- **`smplos-launcher.rasi.tpl`** - theme template with `rgba()` transparency using `popup_opacity` from `colors.toml`, matching the look of other popup panels.
+- **Hyprland layerrules** - `animation slide left`, `blur on`, `ignore_alpha 0.1` on namespace `rofi`.
 
 ### App Cache
 
@@ -218,39 +242,39 @@ rebuild-app-cache
 
 smplOS configures the system so GTK dialogs (file pickers, VS Code popups, etc.) follow the dark/light theme automatically:
 
-- **GTK settings.ini** — written during install for X11 fallback
-- **dconf/GSettings** — written during install via `dbus-run-session` for Wayland (GTK on Wayland ignores `settings.ini`)
-- **`theme-set`** — updates both `gsettings color-scheme` and `gtk-theme` on every theme switch
+- **GTK settings.ini** - written during install for X11 fallback
+- **dconf/GSettings** - written during install via `dbus-run-session` for Wayland (GTK on Wayland ignores `settings.ini`)
+- **`theme-set`** - updates both `gsettings color-scheme` and `gtk-theme` on every theme switch
 
 Credential storage (for VS Code, Brave, git, etc.) is fully configured:
 
-- **gnome-keyring** — installed, started via Hyprland autostart, PAM-integrated for auto-unlock at login
-- **VS Code argv.json** — pre-configured with `"password-store": "gnome-libsecret"` to eliminate the keyring detection dialog
+- **gnome-keyring** - installed, started via Hyprland autostart, PAM-integrated for auto-unlock at login
+- **VS Code argv.json** - pre-configured with `"password-store": "gnome-libsecret"` to eliminate the keyring detection dialog
 
 ## Notification Center
 
-A custom notification center built with Rust and [Slint](https://slint.dev), accessible from the bell icon in the EWW bar. It reads dunst's notification history and displays cards with dynamic heights — long messages word-wrap naturally instead of being truncated.
+A custom notification center built with Rust and [Slint](https://slint.dev), accessible from the bell icon in the EWW bar. It reads dunst's notification history and displays cards with dynamic heights - long messages word-wrap naturally instead of being truncated.
 
 **Open it:** Click the bell icon in the bar, or press <kbd>Super</kbd> + <kbd>N</kbd>.
 
 ### Features
 
-- **Dynamic card layout** — each notification card grows to fit its content. No fixed heights, no wasted space.
-- **Word-wrapped body text** — long notification bodies wrap cleanly instead of being clipped with an ellipsis.
-- **Double-click to open** — double-click any notification to launch the associated app. Uses the desktop entry from dunst metadata, with a fallback to the app name.
-- **Actionable notifications** — well-known notifications (like "System Update") map to specific commands. Double-click the System Update notification to open a full system update in your terminal.
-- **Dismiss** — click the × button on any card to dismiss it.
-- **Scrollable** — notifications overflow into a smooth-scrolling list.
+- **Dynamic card layout** - each notification card grows to fit its content. No fixed heights, no wasted space.
+- **Word-wrapped body text** - long notification bodies wrap cleanly instead of being clipped with an ellipsis.
+- **Double-click to open** - double-click any notification to launch the associated app. Uses the desktop entry from dunst metadata, with a fallback to the app name.
+- **Actionable notifications** - well-known notifications (like "System Update") map to specific commands. Double-click the System Update notification to open a full system update in your terminal.
+- **Dismiss** - click the X button on any card to dismiss it.
+- **Scrollable** - notifications overflow into a smooth-scrolling list.
 
 ### Architecture
 
 ```
 dunst (notification daemon)
-  └─ dunstctl history ──► notif-center (Rust + Slint)
-                              ├─ Parses JSON history
-                              ├─ Maps app names to nerd font icons
-                              ├─ Maps summaries to actions (e.g. "System Update" → smplos-update)
-                              └─ Renders scrollable card list via Slint UI
+  +-- dunstctl history --> notif-center (Rust + Slint)
+                              |-- Parses JSON history
+                              |-- Maps app names to nerd font icons
+                              |-- Maps summaries to actions (e.g. "System Update" -> smplos-update)
+                              +-- Renders scrollable card list via Slint UI
 ```
 
 ## System Updates
@@ -263,16 +287,16 @@ smplos-update
 
 The update script opens in your terminal and runs through:
 
-1. **Pacman** — official repo packages (`pacman -Syu --noconfirm`)
-2. **AUR** — if paru is installed, AUR packages (`paru -Sua --noconfirm`)
-3. **Flatpak** — if Flatpak apps are installed (`flatpak update -y --noninteractive`)
-4. **AppImages** — reminds you to check for updates manually
+1. **Pacman** - official repo packages (`pacman -Syu --noconfirm`)
+2. **AUR** - if paru is installed, AUR packages (`paru -Sua --noconfirm`)
+3. **Flatpak** - if Flatpak apps are installed (`flatpak update -y --noninteractive`)
+4. **AppImages** - reminds you to check for updates manually
 
-Terminal auto-detection ensures it works regardless of which terminal is installed: `xdg-terminal-exec` &#x2192; `st-wl` (Wayland) &#x2192; `st` (X11) &#x2192; `foot` &#x2192; `xterm`.
+Terminal auto-detection makes sure it works regardless of which terminal is installed: `xdg-terminal-exec` -> `st-wl` (Wayland) -> `st` (X11) -> `foot` -> `xterm`.
 
 ## Building
 
-The build system is designed to work on **first run, on any Linux distro**. It runs inside a Docker container for reproducibility — your host system only needs Docker.
+The build system is designed to work on **first run, on any Linux distro**. It runs inside a Docker container for reproducibility - your host system only needs Docker.
 
 ### Quick Start
 
@@ -413,12 +437,12 @@ General:
 
 ### What the Build Does
 
-1. **Checks prerequisites** — detects your distro, ensures Docker is installed and running, checks disk space.
-2. **Builds AUR packages** (unless `--skip-aur`) — compiles packages like EWW in a temporary container. Results are cached in `src/iso/prebuilt/` so they only build once.
-3. **Pulls `archlinux:latest`** — the build runs in a fresh Arch container for reproducibility.
-4. **Downloads packages** — uses `pacman -Syw` to download all packages into a local mirror. On Arch-based hosts, your system's pacman cache is mounted read-only for instant hits.
-5. **Builds the ISO** — copies configs, themes, scripts, and the offline package mirror into an Arch ISO profile, then runs `mkarchiso`.
-6. **Outputs** — the final `.iso` lands in `release/`.
+1. **Checks prerequisites** - detects your distro, ensures Docker is installed and running, checks disk space.
+2. **Builds AUR packages** (unless `--skip-aur`) - compiles packages like EWW in a temporary container. Results are cached in `src/iso/prebuilt/` so they only build once.
+3. **Pulls `archlinux:latest`** - the build runs in a fresh Arch container for reproducibility.
+4. **Downloads packages** - uses `pacman -Syw` to download all packages into a local mirror. On Arch-based hosts, your system's pacman cache is mounted read-only for instant hits.
+5. **Builds the ISO** - copies configs, themes, scripts, and the offline package mirror into an Arch ISO profile, then runs `mkarchiso`.
+6. **Outputs** - the final `.iso` lands in `release/`.
 
 ### Caching
 
@@ -438,54 +462,9 @@ Builds use a **dated cache** (`build_YYYY-MM-DD/`) under `.cache/`. Same-day reb
 | AUR build fails | Try `--skip-aur` to skip it. Pre-built AUR packages are cached in `src/iso/prebuilt/`. |
 | Slow builds | First build downloads ~2 GB of packages. After that, the cache makes rebuilds much faster. On Arch hosts, your system pacman cache is reused automatically. |
 
-### Development Iteration
+### Development & Testing
 
-For config/script changes, avoid full ISO rebuilds:
-
-```bash
-# Host: push changes to VM shared folder
-cd release && ./dev-push.sh eww    # or: bin, hypr, themes, all
-
-# VM: apply changes to the live system
-sudo bash /mnt/dev-apply.sh
-```
-
-### VM Testing
-
-Use QEMU for testing — it provides a `virtio-gpu` device that Hyprland works with out of the box:
-
-```bash
-cd release && ./test-iso.sh
-```
-
-This launches a QEMU VM with KVM acceleration, UEFI firmware, a 20 GB virtual disk, and a 9p shared folder for live hot-reloading. The script auto-detects OVMF, finds the newest ISO in `release/`, and opens the VM window.
-
-Once the VM boots, mount the shared folder to enable hot-reload:
-
-```bash
-# Inside the VM:
-sudo mount -t 9p -o trans=virtio hostshare /mnt
-```
-
-Then iterate without rebuilding the ISO:
-
-```bash
-# Host: push changes to the shared folder
-cd release && ./dev-push.sh
-
-# VM: apply them to the live system
-sudo bash /mnt/dev-apply.sh
-```
-
-The 9p mount is live — `dev-push.sh` writes to `release/vmshare/` and changes are immediately visible inside the VM. No remount needed.
-
-Use `--reset` to wipe the VM disk and start fresh:
-
-```bash
-./test-iso.sh --reset
-```
-
-> **VirtualBox is not supported.** Hyprland requires a working DRM/KMS device with OpenGL support. VirtualBox's virtual GPU (`VBoxVGA` / `VMSVGA`) does not provide this — Hyprland will crash immediately on startup, producing a "Couldn't wait for Hyprland. No child process" error from the login manager. This is a [known limitation](https://wiki.hyprland.org/Getting-Started/Installation/#running-in-a-vm) across all Hyprland-based distros, not a smplOS bug. Use QEMU with KVM (`test-iso.sh`) or VMware with 3D acceleration instead.
+See the [Development Guide](DEVELOPMENT.md) for hot-reload iteration, VM testing with QEMU, and how to extend smplOS (add settings entries, etc.).
 
 ## Themes
 
@@ -493,14 +472,14 @@ Use `--reset` to wipe the VM disk and start fresh:
 
 Catppuccin Mocha, Catppuccin Latte, Ethereal, Everforest, Flexoki Light, Gruvbox, Hackerman, Kanagawa, Matte Black, Nord, Osaka Jade, Ristretto, Rose Pine, Tokyo Night.
 
-One command -- `theme-set <name>` -- applies colors across the entire system: terminal, bar, notifications, compositor borders, lock screen, launcher, system monitor, editor, fish shell, Logseq, and browser chrome.
+One command - `theme-set <name>` - applies colors across the entire system: terminal, bar, notifications, compositor borders, lock screen, launcher, system monitor, editor, fish shell, Logseq, and browser chrome.
 
 ### How It Works
 
 The theme system is a **build-time template pipeline** plus a **runtime switcher**:
 
 ```
-colors.toml ──► generate-theme-configs.sh ──► 9 pre-baked configs per theme
+colors.toml --> generate-theme-configs.sh --> 9 pre-baked configs per theme
                       (sed templates)
                                                theme-set copies them to
                                                their target locations and
@@ -511,7 +490,7 @@ Each theme is a directory under `src/shared/themes/<name>/` containing:
 
 | File | Source | Purpose |
 |------|--------|---------|
-| `colors.toml` | Hand-authored | Single source of truth -- all colors and decoration variables |
+| `colors.toml` | Hand-authored | Single source of truth - all colors and decoration variables |
 | `btop.theme` | Generated | btop color scheme |
 | `dunstrc.theme` | Generated | Dunst notification colors |
 | `eww-colors.scss` | Generated | EWW bar/widget SCSS variables |
@@ -525,7 +504,7 @@ Each theme is a directory under `src/shared/themes/<name>/` containing:
 | `neovim.lua` | Hand-authored | Lazy.nvim colorscheme spec |
 | `vscode.json` | Hand-authored | VS Code/Codium/Cursor theme name + extension ID |
 | `icons.theme` | Hand-authored | GTK icon theme name |
-| `light.mode` | Hand-authored (optional) | Marker file -- if present, GTK + browser use light mode |
+| `light.mode` | Hand-authored (optional) | Marker file - if present, GTK + browser use light mode |
 | `tide.theme` | Hand-authored | Tide prompt colors (git, pwd, vi-mode segments) |
 | `backgrounds/` | Hand-authored | Wallpapers bundled with the theme |
 | `preview.png` | Hand-authored | Theme preview screenshot for the picker |
@@ -625,12 +604,12 @@ The generator provides three variants of each color variable:
    ```
 
 3. **Add optional hand-authored files:**
-   - `neovim.lua` -- Lazy.nvim colorscheme plugin spec
-   - `vscode.json` -- `{"name": "Theme Name", "extension": "publisher.extension-id"}`
-   - `icons.theme` -- GTK icon theme name (e.g., `Papirus-Dark`)
-   - `light.mode` -- Create this empty file if the theme is light
-   - `backgrounds/` -- Add wallpapers (named `1-name.png`, `2-name.png`, etc.)
-   - `preview.png` -- Screenshot for the theme picker
+   - `neovim.lua` - Lazy.nvim colorscheme plugin spec
+   - `vscode.json` - `{"name": "Theme Name", "extension": "publisher.extension-id"}`
+   - `icons.theme` - GTK icon theme name (e.g., `Papirus-Dark`)
+   - `light.mode` - Create this empty file if the theme is light
+   - `backgrounds/` - Add wallpapers (named `1-name.png`, `2-name.png`, etc.)
+   - `preview.png` - Screenshot for the theme picker
 
 4. **Generate configs:**
    ```bash
@@ -650,17 +629,17 @@ When you run `theme-set <name>`, it:
 1. Resolves the theme (user themes in `~/.config/smplos/themes/` take precedence over stock themes)
 2. Atomically swaps the active theme directory at `~/.config/smplos/current/theme/`
 3. Copies pre-baked configs to their target locations:
-   - `eww-colors.scss` &#x2192; `~/.config/eww/theme-colors.scss`
-   - `hyprland.conf` &#x2192; `~/.config/hypr/theme.conf`
-   - `hyprlock.conf` &#x2192; `~/.config/hypr/hyprlock-theme.conf`
-   - `foot.ini` &#x2192; `~/.config/foot/theme.ini`
-   - `btop.theme` &#x2192; `~/.config/btop/themes/current.theme`
-   - `fish.theme` &#x2192; `~/.config/fish/theme.fish`
-   - `tide.theme` &#x2192; applied via `fish -c "source ...; tide reload"`
-   - `logseq-custom.css` &#x2192; `~/.logseq/config/custom.css` + plugin theme via `preferences.json`
-   - `smplos-launcher.rasi` &#x2192; `~/.config/rofi/smplos-launcher.rasi`
-   - `dunstrc.theme` &#x2192; appended to `~/.config/dunst/dunstrc.active`
-   - `neovim.lua` &#x2192; `~/.config/nvim/lua/plugins/colorscheme.lua`
+   - `eww-colors.scss` -> `~/.config/eww/theme-colors.scss`
+   - `hyprland.conf` -> `~/.config/hypr/theme.conf`
+   - `hyprlock.conf` -> `~/.config/hypr/hyprlock-theme.conf`
+   - `foot.ini` -> `~/.config/foot/theme.ini`
+   - `btop.theme` -> `~/.config/btop/themes/current.theme`
+   - `fish.theme` -> `~/.config/fish/theme.fish`
+   - `tide.theme` -> applied via `fish -c "source ...; tide reload"`
+   - `logseq-custom.css` -> `~/.logseq/config/custom.css` + plugin theme via `preferences.json`
+   - `smplos-launcher.rasi` -> `~/.config/rofi/smplos-launcher.rasi`
+   - `dunstrc.theme` -> appended to `~/.config/dunst/dunstrc.active`
+   - `neovim.lua` -> `~/.config/nvim/lua/plugins/colorscheme.lua`
 4. Bakes accent/fg colors into SVG icon templates for the EWW bar
 5. Sets the wallpaper from `backgrounds/`
 6. Restarts/reloads all running apps:
@@ -680,9 +659,9 @@ When you run `theme-set <name>`, it:
 
 Window opacity is controlled at two levels:
 
-1. **Application level** -- st-wl has a compiled-in alpha patch. `DEFAULT_ALPHA` in `config.h` is set to `1.0` (fully opaque) so the terminal renders solid pixels. The `-A` flag can override this at launch.
+1. **Application level** - st-wl has a compiled-in alpha patch. `DEFAULT_ALPHA` in `config.h` is set to `1.0` (fully opaque) so the terminal renders solid pixels. The `-A` flag can override this at launch.
 
-2. **Compositor level** -- Hyprland window rules in `windows.conf` apply per-theme opacity:
+2. **Compositor level** - Hyprland window rules in `windows.conf` apply per-theme opacity:
    ```
    # All windows get the theme's default opacity
    windowrule = opacity $themeOpacityActive $themeOpacityInactive, match:class .*
@@ -694,10 +673,10 @@ Window opacity is controlled at two levels:
    windowrule = opacity 1.0 1.0, match:class ^(mpv|imv|vlc|firefox|chromium|brave)$
    ```
 
-   Rule order matters -- **last match wins** in Hyprland. Terminal and media rules come after the generic rule to override it.
+   Rule order matters - **last match wins** in Hyprland. Terminal and media rules come after the generic rule to override it.
 
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
 
-Terminal emulators (st, st-wl) are under their own licenses — see their respective directories.
+Terminal emulators (st, st-wl) are under their own licenses - see their respective directories.

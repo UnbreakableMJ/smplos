@@ -14,5 +14,6 @@ satty-bin
 # Brave browser (pre-compiled binary from AUR)
 brave-bin
 
+
 # Hyprland plugins/extras (optional)
 # hyprland-plugins-git

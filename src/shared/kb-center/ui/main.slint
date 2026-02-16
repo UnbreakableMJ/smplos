@@ -1,0 +1,608 @@
+// Keyboard Center - layout management + keyboard preview
+
+struct KeyData {
+    base: string,
+    english: string,
+    w: float,
+    is-modifier: bool,
+}
+
+struct LayoutEntry {
+    code: string,
+    variant: string,
+    description: string,
+}
+
+export global Theme {
+    in-out property <color>  bg:         #1e1e2e;
+    in-out property <color>  fg:         #cdd6f4;
+    in-out property <color>  fg_dim:     #a6adc8;
+    in-out property <color>  accent:     #89b4fa;
+    in-out property <color>  bg_light:   #45475a;
+    in-out property <color>  bg_lighter: #585b70;
+    in-out property <color>  red:        #f38ba8;
+    in-out property <color>  green:      #a6e3a1;
+    in-out property <color>  yellow:     #f9e2af;
+    in-out property <color>  cyan:       #94e2d5;
+    in-out property <float>  opacity:    0.40;
+}
+
+component KeyCap inherits Rectangle {
+    in property <string> base: "";
+    in property <string> english: "";
+    in property <float>  w: 1.0;
+    in property <bool>   is-modifier: false;
+
+    private property <bool> has-english: !root.is-modifier && root.english != "";
+
+    width: max(root.w * 41px - 3px, 38px);
+    height: 38px;
+    border-radius: 4px;
+    background: root.is-modifier
+        ? Theme.bg_lighter
+        : Theme.bg_light;
+
+    // English label: top half, smaller, dim
+    Text {
+        visible: root.has-english;
+        x: 0px; y: 1px;
+        width: parent.width;
+        height: parent.height / 2;
+        text: root.english;
+        color: Theme.fg_dim;
+        font-size: 10px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Local label: bottom half (or centered if no english)
+    Text {
+        x: 0px;
+        y: root.has-english ? parent.height / 2 - 2px : 0px;
+        width: parent.width;
+        height: root.has-english ? parent.height / 2 - 1px : parent.height;
+        text: root.base;
+        color: root.is-modifier ? Theme.fg_dim : Theme.fg;
+        font-size: root.is-modifier ? 10px : (root.has-english ? 14px : 15px);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Keyboard Center";
+    width: 640px;
+    height: 440px;
+    no-frame: true;
+    background: Theme.bg.transparentize(1.0 - Theme.opacity);
+    forward-focus: focus-scope;
+
+    // -- Keyboard preview data --
+    in property <string>         layout-name: "us";
+    in property <[KeyData]>      row0: [];
+    in property <[KeyData]>      row1: [];
+    in property <[KeyData]>      row2: [];
+    in property <[KeyData]>      row3: [];
+    in property <[KeyData]>      row4: [];
+
+    // -- Layout management data --
+    in property <[string]>       available-layouts: [];
+    in-out property <int>        selected-dropdown-index: -1;
+    in-out property <int>        highlighted-dropdown-index: 0;
+    in property <[LayoutEntry]>  active-layouts: [];
+    in-out property <bool>       dropdown-open: false;
+    in-out property <string>     search-text: "";
+    in property <bool>           loading: true;
+
+    callback close();
+    callback move-window(length, length);
+    callback add-layout(int);
+    callback remove-layout(int);
+    callback preview-layout(int);
+    callback preview-dropdown(int);
+    callback filter-layouts(string);
+
+    // Escape to close, Alt+A to add layout
+    focus-scope := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                if root.dropdown-open {
+                    root.dropdown-open = false;
+                    focus-scope.focus();
+                    return accept;
+                }
+                root.close();
+                return accept;
+            }
+            if e.modifiers.alt && (e.text == "a" || e.text == "A") {
+                if root.active-layouts.length < 2 && root.selected-dropdown-index >= 0 {
+                    root.add-layout(root.selected-dropdown-index);
+                }
+                return accept;
+            }
+            if e.modifiers.alt && (e.text == "c" || e.text == "C") {
+                root.dropdown-open = !root.dropdown-open;
+                root.search-text = "";
+                root.highlighted-dropdown-index = 0;
+                if root.dropdown-open {
+                    search-input.focus();
+                }
+                return accept;
+            }
+            if e.modifiers.alt && (e.text == "d" || e.text == "D") {
+                if root.active-layouts.length > 1 {
+                    root.remove-layout(1);
+                }
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // Main content layer
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+
+        // ---- Header (draggable) ----
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                drag-touch := TouchArea {
+                    moved => {
+                        if self.pressed {
+                            root.move-window(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                        }
+                    }
+                    mouse-cursor: move;
+                }
+                Text {
+                    text: "Keyboard Center";
+                    color: Theme.fg;
+                    font-size: 14px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 4px;
+                background: close-area.has-hover ? Theme.red : Theme.bg_light;
+
+                Text {
+                    width: 100%; height: 100%;
+                    text: "\u{2715}";
+                    color: close-area.has-hover ? Theme.bg : Theme.fg;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                close-area := TouchArea {
+                    clicked => { root.close(); }
+                }
+            }
+        }
+
+        // ---- Separator ----
+        Rectangle { height: 1px; background: Theme.bg_lighter; }
+
+        // ---- Add layout row: dropdown + button ----
+        dropdown-row := HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+
+            // Dropdown button
+            dropdown-btn := Rectangle {
+                horizontal-stretch: 1;
+                height: 30px;
+                border-radius: 4px;
+                background: dropdown-touch.has-hover ? Theme.bg_lighter : Theme.bg_light;
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.available-layouts.length <= 0
+                            ? "No layouts found"
+                            : root.selected-dropdown-index >= 0
+                                ? root.available-layouts[root.selected-dropdown-index]
+                                : "Select a layout... (Alt+C)";
+                        color: root.selected-dropdown-index >= 0 ? Theme.fg : Theme.fg_dim;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: root.dropdown-open ? "\u{25B2}" : "\u{25BC}";
+                        color: Theme.fg_dim;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                dropdown-touch := TouchArea {
+                    clicked => {
+                        root.dropdown-open = !root.dropdown-open;
+                        root.search-text = "";
+                        root.highlighted-dropdown-index = 0;
+                        if root.dropdown-open {
+                            search-input.focus();
+                        }
+                    }
+                }
+            }
+
+            // "Max 2 layouts" hint (shown when limit reached)
+            if root.active-layouts.length >= 2: Text {
+                text: "Max 2 layouts supported";
+                color: Theme.fg_dim;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+
+            // Add Layout button with underlined A (Alt+A hotkey)
+            Rectangle {
+                visible: root.active-layouts.length < 2;
+                height: 30px;
+                min-width: 32px;
+                border-radius: 4px;
+                background: root.available-layouts.length <= 0 || root.selected-dropdown-index < 0
+                    ? Theme.bg_lighter.transparentize(60%)
+                    : add-touch.has-hover ? Theme.green : Theme.bg_light;
+
+                HorizontalLayout {
+                    alignment: center;
+                    padding-left: 10px;
+                    padding-right: 10px;
+
+                    // "A" with underline
+                    Rectangle {
+                        width: 9px;
+                        height: parent.height;
+
+                        Text {
+                            text: "A";
+                            color: add-touch.has-hover ? Theme.bg : Theme.fg;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                            width: parent.width;
+                            height: parent.height;
+                        }
+
+                        Rectangle {
+                            x: 1px;
+                            y: parent.height / 2 + 7px;
+                            width: 7px;
+                            height: 1px;
+                            background: add-touch.has-hover ? Theme.bg : Theme.fg;
+                        }
+                    }
+
+                    Text {
+                        text: "dd Layout";
+                        color: add-touch.has-hover ? Theme.bg : Theme.fg;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                add-touch := TouchArea {
+                    clicked => {
+                        if root.available-layouts.length > 0 && root.selected-dropdown-index >= 0 {
+                            root.add-layout(root.selected-dropdown-index);
+                        }
+                    }
+                    mouse-cursor: root.available-layouts.length > 0 && root.selected-dropdown-index >= 0 ? pointer : default;
+                }
+            }
+        }
+
+        // ---- Active layouts list ----
+        if root.active-layouts.length > 0: VerticalLayout {
+            spacing: 3px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+
+            for entry[idx] in root.active-layouts: Rectangle {
+                height: 30px;
+                border-radius: 4px;
+                background: layout-row-touch.has-hover ? Theme.bg_lighter : Theme.bg_light;
+
+                // Row-level click-to-preview (behind the buttons)
+                layout-row-touch := TouchArea {
+                    clicked => { root.preview-layout(idx); }
+                }
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 6px;
+                    spacing: 6px;
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: entry.description;
+                        color: Theme.fg;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: entry.code;
+                        color: Theme.fg_dim;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+
+                    // Preview button
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: preview-touch.has-hover ? Theme.accent : transparent;
+
+                        Text {
+                            width: 100%; height: 100%;
+                            text: "\u{2328}";
+                            color: preview-touch.has-hover ? Theme.bg : Theme.fg_dim;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        preview-touch := TouchArea {
+                            clicked => { root.preview-layout(idx); }
+                        }
+                    }
+
+                    // Remove button (hidden for English and when only 1 layout)
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: remove-touch.has-hover ? Theme.red : transparent;
+                        visible: root.active-layouts.length > 1 && entry.code != "us";
+
+                        Text {
+                            width: 100%; height: 100%;
+                            text: "\u{2715}";
+                            color: remove-touch.has-hover ? Theme.bg : Theme.fg_dim;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        remove-touch := TouchArea {
+                            clicked => { root.remove-layout(idx); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Separator ----
+        Rectangle { height: 1px; background: Theme.bg_lighter; }
+
+        // ---- Keyboard preview label ----
+        HorizontalLayout {
+            height: 20px;
+            Text {
+                text: root.layout-name;
+                color: Theme.fg_dim;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
+        // ---- Keyboard rows ----
+        VerticalLayout {
+            spacing: 3px;
+
+            HorizontalLayout {
+                spacing: 3px;
+                for key in root.row0: KeyCap {
+                    base: key.base; english: key.english;
+                    w: key.w; is-modifier: key.is-modifier;
+                }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                for key in root.row1: KeyCap {
+                    base: key.base; english: key.english;
+                    w: key.w; is-modifier: key.is-modifier;
+                }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                for key in root.row2: KeyCap {
+                    base: key.base; english: key.english;
+                    w: key.w; is-modifier: key.is-modifier;
+                }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                for key in root.row3: KeyCap {
+                    base: key.base; english: key.english;
+                    w: key.w; is-modifier: key.is-modifier;
+                }
+            }
+            HorizontalLayout {
+                spacing: 3px;
+                for key in root.row4: KeyCap {
+                    base: key.base; english: key.english;
+                    w: key.w; is-modifier: key.is-modifier;
+                }
+            }
+        }
+    }
+
+    // ---- Dropdown overlay (always instantiated, visibility-toggled for speed) ----
+    Rectangle {
+        visible: root.dropdown-open;
+        width: 100%;
+        height: 100%;
+
+        // Dismiss backdrop
+        TouchArea {
+            clicked => {
+                root.dropdown-open = false;
+                focus-scope.focus();
+            }
+        }
+
+        // The actual dropdown panel, anchored below the add-layout row
+        Rectangle {
+            x: 10px;
+            // header(32) + sep(1) + add-row(30) + padding(10) + spacing(6*2) = 91
+            y: 91px;
+            width: root.width - 20px;
+            height: 200px;
+            border-radius: 4px;
+            background: Theme.bg_light;
+            border-width: 1px;
+            border-color: Theme.bg_lighter;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000080;
+            drop-shadow-offset-y: 4px;
+
+            VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+
+                // Search box
+                Rectangle {
+                    height: 28px;
+                    border-radius: 4px;
+                    background: Theme.bg;
+
+                    search-input := TextInput {
+                        x: 8px;
+                        y: 6px;
+                        width: parent.width - 16px;
+                        height: parent.height;
+                        color: Theme.fg;
+                        font-size: 12px;
+                        text <=> root.search-text;
+                        edited => {
+                            root.filter-layouts(self.text);
+                            root.highlighted-dropdown-index = 0;
+                            dropdown-flick.viewport-y = 0;
+                        }
+                        key-pressed(e) => {
+                            if e.text == Key.DownArrow {
+                                if root.highlighted-dropdown-index < root.available-layouts.length - 1 {
+                                    root.highlighted-dropdown-index += 1;
+                                }
+                                // scroll to keep highlighted visible
+                                dropdown-flick.viewport-y = -root.highlighted-dropdown-index * 27px + 80px;
+                                return accept;
+                            }
+                            if e.text == Key.UpArrow {
+                                if root.highlighted-dropdown-index > 0 {
+                                    root.highlighted-dropdown-index -= 1;
+                                }
+                                dropdown-flick.viewport-y = -root.highlighted-dropdown-index * 27px + 80px;
+                                return accept;
+                            }
+                            if e.text == Key.Return {
+                                if root.available-layouts.length > 0 {
+                                    root.selected-dropdown-index = root.highlighted-dropdown-index;
+                                    root.dropdown-open = false;
+                                    root.add-layout(root.highlighted-dropdown-index);
+                                    focus-scope.focus();
+                                }
+                                return accept;
+                            }
+                            if e.text == Key.Escape {
+                                root.dropdown-open = false;
+                                focus-scope.focus();
+                                return accept;
+                            }
+                            reject
+                        }
+                    }
+
+                    // Placeholder
+                    Text {
+                        visible: root.search-text == "";
+                        x: 8px;
+                        y: 6px;
+                        height: parent.height;
+                        text: "Search layouts...";
+                        color: Theme.fg_dim;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                dropdown-flick := Flickable {
+                    VerticalLayout {
+                        spacing: 1px;
+                        for item[idx] in root.available-layouts: Rectangle {
+                            height: 26px;
+                            border-radius: 3px;
+                            background: idx == root.highlighted-dropdown-index
+                                ? Theme.accent.transparentize(50%)
+                                : item-touch.has-hover ? Theme.accent.transparentize(70%) : transparent;
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                Text {
+                                    text: item;
+                                    color: idx == root.selected-dropdown-index ? Theme.accent : Theme.fg;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+
+                            item-touch := TouchArea {
+                                moved => {
+                                    root.highlighted-dropdown-index = idx;
+                                }
+                                clicked => {
+                                    root.selected-dropdown-index = idx;
+                                    root.dropdown-open = false;
+                                    root.add-layout(idx);
+                                    focus-scope.focus();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Loading spinner overlay ----
+    if root.loading: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.bg.transparentize(30%);
+
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                Text {
+                    text: "Loading layouts...";
+                    color: Theme.fg_dim;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}

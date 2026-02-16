@@ -160,11 +160,41 @@ if [[ -f "$SHARE/notif-center/notif-center" ]]; then
     log "  done"
 fi
 
+# ── kb-center ────────────────────────────────────────────────
+if [[ -f "$SHARE/kb-center/kb-center" ]]; then
+    log "Applying kb-center binary..."
+    if [[ -d "/usr/local/bin/kb-center" ]]; then
+        rm -rf "/usr/local/bin/kb-center"
+    fi
+    cp "$SHARE/kb-center/kb-center" "/usr/local/bin/"
+    chmod +x "/usr/local/bin/kb-center"
+    own "/usr/local/bin/kb-center"
+    log "  done"
+fi
+
+# ── disp-center ──────────────────────────────────────────────
+if [[ -f "$SHARE/disp-center/disp-center" ]]; then
+    log "Applying disp-center binary..."
+    if [[ -d "/usr/local/bin/disp-center" ]]; then
+        rm -rf "/usr/local/bin/disp-center"
+    fi
+    cp "$SHARE/disp-center/disp-center" "/usr/local/bin/"
+    chmod +x "/usr/local/bin/disp-center"
+    own "/usr/local/bin/disp-center"
+    log "  done"
+fi
+
 # ── Hyprland configs ────────────────────────────────────────
 if [[ -d "$SHARE/hypr" && "$(ls -A "$SHARE/hypr" 2>/dev/null)" ]]; then
     log "Applying Hyprland configs..."
     mkdir -p "$USER_HOME/.config/hypr"
-    cp -r "$SHARE/hypr/"* "$USER_HOME/.config/hypr/"
+    # Preserve the user's keyboard layout -- skip input.conf if it already exists
+    if [[ -f "$USER_HOME/.config/hypr/input.conf" ]]; then
+        find "$SHARE/hypr" -mindepth 1 -maxdepth 1 ! -name input.conf -exec cp -r {} "$USER_HOME/.config/hypr/" \;
+        log "  (skipped input.conf -- preserving keyboard layout)"
+    else
+        cp -r "$SHARE/hypr/"* "$USER_HOME/.config/hypr/"
+    fi
     own "$USER_HOME/.config/hypr/"
     if [[ -f "$SHARE/hypr/bindings.conf" ]]; then
         mkdir -p "$USER_HOME/.config/smplos"

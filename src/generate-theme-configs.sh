@@ -49,12 +49,26 @@ generate_theme() {
   done < "$colors_file" > "$sed_script"
 
   # Decoration defaults (applied only if theme didn't set them)
-  for pair in "rounding:10" "blur_size:6" "blur_passes:3" "opacity_active:0.92" "opacity_inactive:0.85" "term_opacity_active:1.0" "term_opacity_inactive:1.0" "popup_opacity:0.60"; do
+  for pair in "rounding:10" "gaps_in:2" "gaps_out:4" "border_size:2" "blur_size:6" "blur_passes:3" "opacity_active:1.0" "opacity_inactive:0.95" "term_opacity_active:1.0" "term_opacity_inactive:0.95" "popup_opacity:0.60"; do
     local dkey="${pair%%:*}" dval="${pair#*:}"
     if ! grep -q "{{ ${dkey} }}" "$sed_script"; then
       printf 's|{{ %s }}|%s|g\n' "$dkey" "$dval" >> "$sed_script"
     fi
   done
+
+  # Border color defaults: derive from accent/color8 if not explicitly set
+  if ! grep -q '{{ border_active }}' "$sed_script"; then
+    local accent_hex
+    accent_hex=$(grep '^accent' "$colors_file" | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
+    accent_hex="${accent_hex#\#}"
+    printf 's|{{ border_active }}|rgb(%s)|g\n' "$accent_hex" >> "$sed_script"
+  fi
+  if ! grep -q '{{ border_inactive }}' "$sed_script"; then
+    local c8_hex
+    c8_hex=$(grep '^color8' "$colors_file" | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
+    c8_hex="${c8_hex#\#}"
+    printf 's|{{ border_inactive }}|rgba(%saa)|g\n' "$c8_hex" >> "$sed_script"
+  fi
 
   # Expand each template into the theme directory
   local count=0

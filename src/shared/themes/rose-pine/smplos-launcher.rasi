@@ -14,8 +14,8 @@ configuration {
 /*****----- Global Properties -----*****/
 * {
     font:                        "JetBrainsMono Nerd Font 10";
-    background:                  rgba(250,244,237,0.60);
-    background-alt:              rgba(242,233,225,0.60);
+    background:                  rgba(250,244,237,0.85);
+    background-alt:              rgba(242,233,225,0.85);
     background-solid:            #faf4ed;
     foreground:                  #575279;
     foreground-dim:              #9893a5;

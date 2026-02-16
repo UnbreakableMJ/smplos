@@ -28,7 +28,7 @@ export component MainWindow inherits Window {
     height: 520px;
     title: "Notifications";
     no-frame: true;
-    background: Theme.bg;
+    background: Theme.bg.transparentize(1.0 - Theme.opacity);
     forward-focus: key_scope;
 
     in-out property <[NotificationItem]> notifications: [];
@@ -43,6 +43,7 @@ export component MainWindow inherits Window {
     callback clear-all();
     callback activate(int);
     callback close();
+    callback start-drag();
 
     public function focus-list() {
         key_scope.focus();
@@ -182,6 +183,7 @@ export component MainWindow inherits Window {
                         spacing: 8px;
                         VerticalLayout {
                              alignment: center;
+                             horizontal-stretch: 0;
                              Text {
                                 text: root.notif-count-text;
                                 color: Theme.fg;
@@ -190,7 +192,18 @@ export component MainWindow inherits Window {
                                 vertical-alignment: center;
                              }
                         }
-                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            background: transparent;
+                            TouchArea {
+                                pointer-event(event) => {
+                                    if (event.kind == PointerEventKind.down) {
+                                        root.start-drag();
+                                    }
+                                }
+                                mouse-cursor: move;
+                            }
+                        }
                         VerticalLayout {
                              alignment: center;
                              Rectangle {

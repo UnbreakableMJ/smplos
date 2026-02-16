@@ -71,14 +71,12 @@ fzf
 bat
 eza
 yazi
-btop
 fastfetch
 unzip
 zip
 wget
 curl
 micro
-mission-center
 
 # ── Development ──────────────────────────────────────────────
 git
@@ -120,6 +118,16 @@ plymouth
 # ── Applications ─────────────────────────────────────────────
 mpv
 keepassxc
+mission-center
+
+# ── Media Codecs ─────────────────────────────────────────────
+ffmpeg
+gstreamer
+gst-plugins-base
+gst-plugins-good
+gst-plugins-bad
+gst-plugins-ugly
+gst-libav
 
 # ── XDG Portals ──────────────────────────────────────────────
 xdg-desktop-portal-gtk

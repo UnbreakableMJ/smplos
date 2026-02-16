@@ -86,6 +86,147 @@ Ukrainian|ua'
   return 0
 }
 
+# Console keymap -> XKB layout mapping (for setting the primary XKB layout)
+keymap_to_xkb() {
+  case "$1" in
+    us|dvorak)          echo "us" ;;
+    uk)                 echo "gb" ;;
+    de|de_CH-latin1)    echo "de" ;;
+    fr|fr_CH)           echo "fr" ;;
+    es)                 echo "es" ;;
+    it)                 echo "it" ;;
+    pt-latin1)          echo "pt" ;;
+    br-abnt2)           echo "br" ;;
+    ru)                 echo "ru" ;;
+    ua)                 echo "ua" ;;
+    pl)                 echo "pl" ;;
+    cz)                 echo "cz" ;;
+    sk-qwertz)          echo "sk" ;;
+    hu)                 echo "hu" ;;
+    ro)                 echo "ro" ;;
+    bg-cp1251)          echo "bg" ;;
+    hr|croat)           echo "hr" ;;
+    sr-latin)           echo "rs" ;;
+    slovene)            echo "si" ;;
+    ba)                 echo "ba" ;;
+    mk-utf)             echo "mk" ;;
+    nl)                 echo "nl" ;;
+    be-latin1)          echo "be" ;;
+    dk-latin1)          echo "dk" ;;
+    no-latin1)          echo "no" ;;
+    sv-latin1)          echo "se" ;;
+    fi)                 echo "fi" ;;
+    is-latin1)          echo "is" ;;
+    et)                 echo "ee" ;;
+    lt)                 echo "lt" ;;
+    lv)                 echo "lv" ;;
+    gr)                 echo "gr" ;;
+    tr*|trq)            echo "tr" ;;
+    il)                 echo "il" ;;
+    jp106)              echo "jp" ;;
+    cf)                 echo "ca" ;;
+    ie)                 echo "ie" ;;
+    ge)                 echo "ge" ;;
+    azerty)             echo "az" ;;
+    by)                 echo "by" ;;
+    kazakh)             echo "kz" ;;
+    kyrgyz)             echo "kg" ;;
+    la-latin1)          echo "latam" ;;
+    khmer)              echo "kh" ;;
+    tj_alt-UTF8)        echo "tj" ;;
+    *)                  echo "us" ;;
+  esac
+}
+
+# STEP 1b: EXTRA KEYBOARD LAYOUT (optional)
+step_extra_layout() {
+  step "Add an extra keyboard layout? (optional)"
+
+  if ! gum confirm --default=false --affirmative "Yes, add another layout" --negative "No, skip" "Would you like to add a second keyboard layout?"; then
+    extra_layout=""
+    extra_variant=""
+    return 0
+  fi
+
+  # Build list: popular layouts with variants first, then all XKB layouts
+  local layouts
+  layouts=$(cat <<'LAYOUTS'
+Arabic|ara|
+Belarusian|by|
+Bulgarian|bg|
+Bulgarian (phonetic)|bg|phonetic
+Chinese|cn|
+Croatian|hr|
+Czech|cz|
+Danish|dk|
+Dutch|nl|
+English (UK)|gb|
+English (US)|us|
+English (US, Colemak)|us|colemak
+English (US, Dvorak)|us|dvorak
+English (US, intl. with dead keys)|us|altgr-intl
+Estonian|ee|
+Finnish|fi|
+French|fr|
+French (AZERTY)|fr|azerty
+French (BEPO)|fr|bepo
+French (Canada)|ca|
+Georgian|ge|
+German|de|
+German (Switzerland)|ch|
+Greek|gr|
+Hebrew|il|
+Hungarian|hu|
+Icelandic|is|
+Irish|ie|
+Italian|it|
+Japanese|jp|
+Kazakh|kz|
+Korean|kr|
+Kyrgyz|kg|
+Latvian|lv|
+Lithuanian|lt|
+Macedonian|mk|
+Mongolian|mn|
+Norwegian|no|
+Persian|ir|
+Polish|pl|
+Portuguese|pt|
+Portuguese (Brazil)|br|
+Romanian|ro|
+Russian|ru|
+Russian (phonetic)|ru|phonetic
+Russian (phonetic, YAZHERTY)|ru|phonetic_YAZHERTY
+Russian (phonetic, Windows)|ru|phonetic_winkeys
+Serbian|rs|
+Slovak|sk|
+Slovenian|si|
+Spanish|es|
+Spanish (Latin American)|latam|
+Swedish|se|
+Thai|th|
+Turkish|tr|
+Ukrainian|ua|
+Ukrainian (phonetic)|ua|phonetic
+Uzbek|uz|
+Vietnamese|vn|
+LAYOUTS
+)
+
+  local choice
+  choice=$(printf '%s\n' "$layouts" | cut -d'|' -f1 | gum filter --height 12 --header "Pick a layout (type to search, ESC to go back)") || return 1
+
+  if [[ -z "$choice" ]]; then
+    extra_layout=""
+    extra_variant=""
+    return 0
+  fi
+
+  extra_layout=$(printf '%s\n' "$layouts" | awk -F'|' -v c="$choice" '$1==c{print $2; exit}')
+  extra_variant=$(printf '%s\n' "$layouts" | awk -F'|' -v c="$choice" '$1==c{print $3; exit}')
+  return 0
+}
+
 # STEP 2: USERNAME
 step_username() {
   step "Let's setup your user account..."
@@ -167,7 +308,8 @@ Username,$username
 Password,$(printf "%${#password}s" | tr ' ' '*')
 Hostname,$hostname
 Timezone,$timezone
-Keyboard,$keyboard" |
+Keyboard,$keyboard
+Extra layout,${extra_layout:+${extra_layout}${extra_variant:+ ($extra_variant)}}${extra_layout:-[None]}" |
     gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
 
   echo
@@ -244,6 +386,7 @@ step_disk_confirm() {
 # Define the ordered list of steps
 steps=(
   step_keyboard
+  step_extra_layout
   step_username
   step_password
   step_hostname
@@ -273,6 +416,10 @@ while (( current_step < total_steps )); do
 done
 
 clear
+
+# Save extra keyboard layout choice (may be empty)
+echo "${extra_layout:-}" >user_extra_layout.txt
+echo "${extra_variant:-}" >user_extra_variant.txt
 
 # Escape username and password for safe inclusion in JSON
 password_escaped=$(printf '%s' "$password" | jq -Rsa)
@@ -500,5 +647,7 @@ if [[ $1 == "dry" ]]; then
   echo -e "\n\nUser Credentials:"
   cat user_credentials.json
 
-  rm user_configuration.json user_credentials.json
+  echo -e "\n\nExtra Layout: $(cat user_extra_layout.txt) / Variant: $(cat user_extra_variant.txt)"
+
+  rm user_configuration.json user_credentials.json user_extra_layout.txt user_extra_variant.txt
 fi

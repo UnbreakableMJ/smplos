@@ -55,6 +55,9 @@
 ;; Window title
 (deflisten window-title :initial "" `scripts/window-title.sh`)
 
+;; Keyboard layout (only visible when multiple layouts configured)
+(deflisten kb-data :initial '{"code":"","layout":"","xkb_layout":"","xkb_variant":"","visible":"no"}' `scripts/keyboard-listener.sh`)
+
 ;; ============================================================================
 ;; WIDGETS
 ;; ============================================================================
@@ -156,6 +159,15 @@
           :visible {usb-data.present == "yes"}
     (label :class "icon" :text {usb-data.icon})))
 
+;; Keyboard layout indicator (only visible when multiple layouts are configured)
+(defwidget tray-keyboard []
+  (button :class "tray-keyboard"
+          :onclick "hyprctl switchxkblayout current next 2>/dev/null || true"
+          :onrightclick "kb-center ${kb-data.xkb_layout} ${kb-data.xkb_variant} &"
+          :tooltip {kb-data.layout}
+          :visible {kb-data.visible == "yes"}
+    (label :class "kb-code" :text {kb-data.code})))
+
 ;; Clock + calendar toggle
 (defwidget tray-clock []
   (button :class "tray-clock"
@@ -167,6 +179,7 @@
 (defwidget tray []
   (box :class "tray" :orientation "h" :space-evenly false :spacing 2
     (tray-usb)
+    (tray-keyboard)
     (tray-bluetooth)
     (tray-wifi)
     (tray-internet)

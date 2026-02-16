@@ -12,10 +12,12 @@ term() {
 
 case "${1:-}" in
   appearance)
-    theme-picker
+    command -v theme-picker &>/dev/null && exec theme-picker
+    die "Theme picker not found"
     ;;
 
   display)
+    command -v disp-center &>/dev/null && exec disp-center
     if [[ -n "$WAYLAND_DISPLAY" ]]; then
       command -v wdisplays &>/dev/null && exec wdisplays
       command -v nwg-displays &>/dev/null && exec nwg-displays
@@ -46,6 +48,11 @@ case "${1:-}" in
     die "No audio manager found (install pavucontrol)"
     ;;
 
+  keyboard)
+    command -v kb-center &>/dev/null && exec kb-center
+    die "Keyboard Center not found"
+    ;;
+
   power)
     powermenu
     ;;
@@ -57,7 +64,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "Usage: smplos-settings {appearance|display|network|bluetooth|audio|power|about}" >&2
+    echo "Usage: smplos-settings {appearance|display|keyboard|network|bluetooth|audio|power|about}" >&2
     exit 1
     ;;
 esac

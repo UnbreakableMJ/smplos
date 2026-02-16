@@ -9,12 +9,13 @@
 
 CACHE="$HOME/.cache/smplos/app_index"
 
-# Handle selection -- launch the command, then re-display list
+# Handle selection -- launch the command and close rofi
 if [[ "${ROFI_RETV:-0}" -eq 1 && -n "${ROFI_INFO:-}" ]]; then
     ${ROFI_INFO} &>/dev/null &
+    exit 0  # no output → rofi closes
 fi
 
-# Output settings entries (always, so list persists after launch)
+# Output settings entries (initial call or tab switch only)
 [[ -f "$CACHE" ]] || exit 0
 grep ';settings;' "$CACHE" | while IFS=';' read -r name exec _cat icon; do
     if [[ -n "$icon" ]]; then

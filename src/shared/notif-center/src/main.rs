@@ -2,6 +2,7 @@ mod backend;
 mod theme;
 
 use backend::{clear_all_notifications, dismiss_notification, get_notifications, open_notification, Notification};
+use i_slint_backend_winit::WinitWindowAccessor;
 use slint::{Model, ModelRc, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -151,6 +152,17 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         ui.on_close(move || {
             std::process::exit(0);
+        });
+    }
+
+    {
+        let ui_weak = ui.as_weak();
+        ui.on_start_drag(move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.window().with_winit_window(|winit_win: &i_slint_backend_winit::winit::window::Window| {
+                    let _ = winit_win.drag_window();
+                });
+            }
         });
     }
 
