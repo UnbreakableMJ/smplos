@@ -2,7 +2,7 @@
 #
 # smplOS ISO Builder
 # Builds the ISO in a clean Arch Linux container for reproducibility.
-# Designed to work on first run on any Linux distro.
+# Uses Podman (preferred, daemonless) or Docker as the container runtime.
 #
 set -euo pipefail
 
@@ -13,14 +13,6 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 LOG_DIR="$PROJECT_ROOT/.cache/logs"
 mkdir -p "$LOG_DIR"
 BUILD_LOG="$LOG_DIR/build-$(date +%Y%m%d-%H%M%S).log"
-
-# Ignore broken-pipe signals -- prevents Docker container death when the
-# terminal that launched the build disconnects (e.g. SSH timeout, VS Code
-# terminal closed, tmux detach).  Docker writes to our stdout/stderr; if
-# that pipe breaks, SIGPIPE kills the whole process tree including the
-# container.  By ignoring it, Docker's writes simply fail with EPIPE and
-# the build keeps running.
-trap '' PIPE
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -106,7 +98,63 @@ parse_args() {
 }
 
 ###############################################################################
-# Prerequisite Detection & Auto-Install
+# Container Runtime Detection
+###############################################################################
+
+# Container command -- set by detect_runtime()
+CTR=""
+
+detect_runtime() {
+    if command -v podman &>/dev/null; then
+        CTR="sudo podman"
+        log_info "Container runtime: Podman ($(podman --version 2>/dev/null | head -1))"
+    elif command -v docker &>/dev/null; then
+        CTR="docker"
+        # Docker needs its daemon running and the user in the docker group
+        if ! docker info &>/dev/null 2>&1; then
+            if sudo -n docker info &>/dev/null 2>&1; then
+                CTR="sudo docker"
+            else
+                die "Docker daemon not running. Start it: sudo systemctl start docker"
+            fi
+        fi
+        log_info "Container runtime: Docker ($(docker --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1))"
+        # Docker's daemon architecture needs SIGPIPE protection
+        trap '' PIPE
+    else
+        return 1
+    fi
+}
+
+install_runtime() {
+    local distro="$1"
+    log_step "Installing Podman"
+
+    case "$distro" in
+        arch|endeavouros|manjaro|garuda|cachyos)
+            sudo pacman -S --noconfirm --needed podman
+            ;;
+        ubuntu|debian|pop|linuxmint|zorin)
+            sudo apt-get update
+            sudo apt-get install -y podman
+            ;;
+        fedora|nobara)
+            sudo dnf install -y podman
+            ;;
+        opensuse*|sles)
+            sudo zypper install -y podman
+            ;;
+        void)
+            sudo xbps-install -y podman
+            ;;
+        *)
+            die "Unknown distro '$distro'. Install podman manually: https://podman.io/docs/installation"
+            ;;
+    esac
+}
+
+###############################################################################
+# Prerequisites
 ###############################################################################
 
 detect_distro() {
@@ -120,115 +168,21 @@ detect_distro() {
     fi
 }
 
-install_docker() {
-    local distro="$1"
-    log_step "Installing Docker"
-
-    case "$distro" in
-        arch|endeavouros|manjaro|garuda|cachyos)
-            sudo pacman -S --noconfirm --needed docker
-            ;;
-        ubuntu|debian|pop|linuxmint|zorin)
-            if ! command -v docker &>/dev/null; then
-                sudo apt-get update
-                sudo apt-get install -y ca-certificates curl gnupg
-                sudo install -m 0755 -d /etc/apt/keyrings
-                # Map derivatives to base distro for Docker repo
-                local base_id="$distro"
-                case "$distro" in pop|linuxmint|zorin) base_id="ubuntu" ;; esac
-                curl -fsSL "https://download.docker.com/linux/$base_id/gpg" \
-                    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-                sudo chmod a+r /etc/apt/keyrings/docker.gpg
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-                    https://download.docker.com/linux/$base_id \
-                    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-                    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-                sudo apt-get update
-                sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-            fi
-            ;;
-        fedora|nobara)
-            sudo dnf install -y docker
-            ;;
-        opensuse*|sles)
-            sudo zypper install -y docker
-            ;;
-        void)
-            sudo xbps-install -y docker
-            ;;
-        *)
-            die "Unknown distro '$distro'. Install Docker manually: https://docs.docker.com/engine/install/"
-            ;;
-    esac
-
-    # Enable and start Docker
-    if command -v systemctl &>/dev/null; then
-        sudo systemctl enable --now docker
-    fi
-
-    # Add user to docker group
-    if ! groups | grep -qw docker; then
-        sudo usermod -aG docker "$USER"
-        log_warn "Added $USER to docker group. You may need to log out and back in."
-        log_warn "For now, using sudo for Docker commands."
-    fi
-}
-
-# Docker command (may be overridden to "sudo docker" if needed)
-DOCKER_CMD="docker"
-
 check_prerequisites() {
     log_step "Checking prerequisites"
     local distro
     distro=$(detect_distro)
     log_info "Detected distro: $distro"
 
-    # Docker installed?
-    if ! command -v docker &>/dev/null; then
-        log_warn "Docker not found"
-        read -rp "Install Docker automatically? [Y/n] " answer
+    # Container runtime installed?
+    if ! detect_runtime; then
+        log_warn "No container runtime found (podman or docker)"
+        read -rp "Install Podman automatically? [Y/n] " answer
         if [[ "${answer,,}" != "n" ]]; then
-            install_docker "$distro"
+            install_runtime "$distro"
+            detect_runtime || die "Podman installation failed"
         else
-            die "Docker is required. Install from https://docs.docker.com/engine/install/"
-        fi
-    fi
-
-    # Docker daemon running? Self-heal if not.
-    if ! docker info &>/dev/null 2>&1; then
-        # Check if it's a permissions issue first (daemon running but user not in docker group)
-        if sudo -n docker info &>/dev/null 2>&1; then
-            log_warn "Docker requires sudo (run 'sudo usermod -aG docker \$USER' and re-login to fix)"
-            DOCKER_CMD="sudo docker"
-        else
-            # Daemon genuinely not running -- try to start it
-            log_warn "Docker daemon is not running"
-            if command -v systemctl &>/dev/null; then
-                log_info "Requesting sudo to start Docker service..."
-                sudo systemctl start docker
-                sleep 2
-            fi
-            # Verify it came up
-            if docker info &>/dev/null 2>&1; then
-                log_info "Docker started successfully"
-            elif sudo -n docker info &>/dev/null 2>&1; then
-                log_warn "Docker requires sudo (run 'sudo usermod -aG docker \$USER' and re-login to fix)"
-                DOCKER_CMD="sudo docker"
-            else
-                # Last resort: restart the daemon (fixes stale network/bridge issues)
-                log_warn "Docker failed to respond, attempting restart..."
-                if command -v systemctl &>/dev/null; then
-                    sudo systemctl restart docker
-                    sleep 3
-                fi
-                if docker info &>/dev/null 2>&1; then
-                    log_info "Docker recovered after restart"
-                elif sudo docker info &>/dev/null 2>&1; then
-                    DOCKER_CMD="sudo docker"
-                else
-                    die "Cannot start Docker. Try manually: sudo systemctl restart docker"
-                fi
-            fi
+            die "A container runtime is required. Install podman: https://podman.io/docs/installation"
         fi
     fi
 
@@ -241,7 +195,7 @@ check_prerequisites() {
         [[ "${answer,,}" == "y" ]] || exit 1
     fi
 
-    log_info "Prerequisites OK (Docker $(docker --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1))"
+    log_info "Prerequisites OK"
 }
 
 ###############################################################################
@@ -303,11 +257,10 @@ build_missing_aur_packages() {
     pkg_list_file=$(mktemp)
     printf '%s\n' "${need_build[@]}" > "$pkg_list_file"
 
-    local docker_run_args=(
-        run --rm
-        --dns 1.1.1.1 --dns 8.8.8.8
-        -v "$prebuilt_dir:/output"
-        -v "$pkg_list_file:/tmp/packages.txt:ro"
+    $CTR run --rm \
+        --dns 1.1.1.1 --dns 8.8.8.8 \
+        -v "$prebuilt_dir:/output" \
+        -v "$pkg_list_file:/tmp/packages.txt:ro" \
         archlinux:latest bash -c "
             set -e
             retry() {
@@ -348,36 +301,18 @@ build_missing_aur_packages() {
                 echo \"==> \$pkg done\"
             done < /tmp/packages.txt
             echo '==> All AUR packages built!'
-        "
-    )
-
-    # Run with auto-recovery for Docker network failures
-    local aur_err_log="$LOG_DIR/aur-err.log"
-    if ! $DOCKER_CMD "${docker_run_args[@]}" 2>"$aur_err_log"; then
-        if grep -qi 'network\|veth\|bridge\|endpoint' "$aur_err_log" 2>/dev/null; then
-            log_warn "Docker networking failed -- restarting Docker to recover..."
-            log_info "Requesting sudo to restart Docker service..."
-            sudo systemctl restart docker
-            sleep 3
-            log_info "Retrying AUR build..."
-            $DOCKER_CMD "${docker_run_args[@]}" || die "AUR build failed after Docker restart (log: $aur_err_log)"
-        else
-            cat "$aur_err_log" >&2
-            die "AUR package build failed (log: $aur_err_log)"
-        fi
-    fi
-    rm -f "$aur_err_log"
+        " || die "AUR package build failed"
 
     rm -f "$pkg_list_file"
     log_info "AUR packages saved to: $prebuilt_dir"
 }
 
 ###############################################################################
-# Docker Build
+# Container Build
 ###############################################################################
 
 run_build() {
-    log_step "Starting ISO build in Docker"
+    log_step "Starting ISO build"
     log_info "Compositor: $COMPOSITOR"
     [[ -n "$EDITIONS" ]]  && log_info "Editions: $EDITIONS"
     [[ -n "$RELEASE" ]]  && log_info "Release: max xz compression"
@@ -392,7 +327,7 @@ run_build() {
     local cache_dir="$PROJECT_ROOT/.cache/build_${build_date}"
     mkdir -p "$cache_dir/pacman" "$cache_dir/offline-repo"
 
-    # Persistent binary cache (survives across days — st / notif-center don't change often)
+    # Persistent binary cache (survives across days -- st / notif-center don't change often)
     local bin_cache_dir="$PROJECT_ROOT/.cache/binaries"
     mkdir -p "$bin_cache_dir"
 
@@ -404,7 +339,7 @@ run_build() {
 
     local prebuilt_dir="$SCRIPT_DIR/iso/prebuilt"
 
-    local docker_args=(
+    local run_args=(
         --rm --privileged
         --dns 1.1.1.1 --dns 8.8.8.8
         -v "$SCRIPT_DIR:/build/src:ro"
@@ -420,76 +355,35 @@ run_build() {
     # Mount host pacman cache if on Arch-based system (huge speedup)
     if [[ -d /var/cache/pacman/pkg ]]; then
         log_info "Mounting host pacman cache (Arch detected)"
-        docker_args+=(-v "/var/cache/pacman/pkg:/var/cache/pacman/pkg:ro")
+        run_args+=(-v "/var/cache/pacman/pkg:/var/cache/pacman/pkg:ro")
     fi
 
     # Mount prebuilt AUR packages
     if [[ -d "$prebuilt_dir" ]] && ls "$prebuilt_dir"/*.pkg.tar.* &>/dev/null 2>&1; then
         log_info "Mounting prebuilt AUR packages"
-        docker_args+=(-v "$prebuilt_dir:/build/prebuilt:ro")
+        run_args+=(-v "$prebuilt_dir:/build/prebuilt:ro")
     fi
 
-    [[ -n "$EDITIONS" ]]       && docker_args+=(-e "EDITIONS=$EDITIONS")
-    [[ -n "$RELEASE" ]]       && docker_args+=(-e "RELEASE=1")
-    [[ -n "$NO_CACHE" ]]      && docker_args+=(-e "NO_CACHE=1")
-    [[ -n "$VERBOSE" ]]       && docker_args+=(-e "VERBOSE=1")
-    [[ -n "$SKIP_AUR" ]]      && docker_args+=(-e "SKIP_AUR=1")
-    [[ -n "$SKIP_FLATPAK" ]]  && docker_args+=(-e "SKIP_FLATPAK=1")
-    [[ -n "$SKIP_APPIMAGE" ]] && docker_args+=(-e "SKIP_APPIMAGE=1")
+    [[ -n "$EDITIONS" ]]       && run_args+=(-e "EDITIONS=$EDITIONS")
+    [[ -n "$RELEASE" ]]       && run_args+=(-e "RELEASE=1")
+    [[ -n "$NO_CACHE" ]]      && run_args+=(-e "NO_CACHE=1")
+    [[ -n "$VERBOSE" ]]       && run_args+=(-e "VERBOSE=1")
+    [[ -n "$SKIP_AUR" ]]      && run_args+=(-e "SKIP_AUR=1")
+    [[ -n "$SKIP_FLATPAK" ]]  && run_args+=(-e "SKIP_FLATPAK=1")
+    [[ -n "$SKIP_APPIMAGE" ]] && run_args+=(-e "SKIP_APPIMAGE=1")
 
     log_info "Pulling Arch Linux image..."
-    $DOCKER_CMD pull archlinux:latest
+    $CTR pull archlinux:latest
 
-    # Use a named container so it survives if our terminal disconnects.
-    # --rm would destroy the container (and all build progress) the moment
-    # Docker's output pipe breaks.  With a named container, the build keeps
-    # running inside Docker even if this script dies.
-    local container_name="smplos-build-$$"
-    # Remove stale containers from previous failed runs
-    $DOCKER_CMD rm -f "$container_name" &>/dev/null || true
-
-    # Swap --rm for --name in docker_args
-    local run_args=()
-    for arg in "${docker_args[@]}"; do
-        [[ "$arg" == "--rm" ]] && continue
-        run_args+=("$arg")
-    done
-
-    local build_err_log="$LOG_DIR/build-err.log"
-
-    log_info "Starting build container ($container_name)..."
     log_info "Build log: $BUILD_LOG"
 
-    run_docker_build() {
-        $DOCKER_CMD run --name "$1" "${run_args[@]}" archlinux:latest \
-            /build/src/builder/build.sh 2>"$build_err_log" | tee -a "$BUILD_LOG"
-        # Return the exit code of docker run, not tee
-        return "${PIPESTATUS[0]}"
-    }
+    $CTR run "${run_args[@]}" archlinux:latest \
+        /build/src/builder/build.sh 2>&1 | tee -a "$BUILD_LOG"
 
-    if ! run_docker_build "$container_name"; then
-        if grep -qi 'network\|veth\|bridge\|endpoint' "$build_err_log" 2>/dev/null; then
-            log_warn "Docker networking failed -- restarting Docker to recover..."
-            log_info "Requesting sudo to restart Docker service..."
-            $DOCKER_CMD rm -f "$container_name" &>/dev/null || true
-            sudo systemctl restart docker
-            sleep 3
-            log_info "Retrying ISO build..."
-            run_docker_build "${container_name}-retry" \
-                || { cat "$build_err_log" >&2; die "ISO build failed after Docker restart (log: $BUILD_LOG)"; }
-            $DOCKER_CMD rm -f "${container_name}-retry" &>/dev/null || true
-        else
-            cat "$build_err_log" >&2
-            log_error "Build container '$container_name' preserved for debugging"
-            log_error "  Inspect: docker logs $container_name"
-            log_error "  Shell:   docker start -ai $container_name"
-            die "ISO build failed (log: $BUILD_LOG)"
-        fi
+    local rc="${PIPESTATUS[0]}"
+    if [[ "$rc" -ne 0 ]]; then
+        die "ISO build failed (exit $rc, log: $BUILD_LOG)"
     fi
-
-    # Success -- clean up container and error log
-    $DOCKER_CMD rm -f "$container_name" &>/dev/null || true
-    rm -f "$build_err_log"
 
     echo ""
     log_info "Build complete! (log: $BUILD_LOG)"
