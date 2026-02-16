@@ -9,6 +9,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Build log directory (persists across runs for debugging)
+LOG_DIR="$PROJECT_ROOT/.cache/logs"
+mkdir -p "$LOG_DIR"
+BUILD_LOG="$LOG_DIR/build-$(date +%Y%m%d-%H%M%S).log"
+
+# Ignore broken-pipe signals -- prevents Docker container death when the
+# terminal that launched the build disconnects (e.g. SSH timeout, VS Code
+# terminal closed, tmux detach).  Docker writes to our stdout/stderr; if
+# that pipe breaks, SIGPIPE kills the whole process tree including the
+# container.  By ignoring it, Docker's writes simply fail with EPIPE and
+# the build keeps running.
+trap '' PIPE
+
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
@@ -339,20 +352,21 @@ build_missing_aur_packages() {
     )
 
     # Run with auto-recovery for Docker network failures
-    if ! $DOCKER_CMD "${docker_run_args[@]}" 2>/tmp/docker-aur-err.log; then
-        if grep -qi 'network\|veth\|bridge\|endpoint' /tmp/docker-aur-err.log 2>/dev/null; then
+    local aur_err_log="$LOG_DIR/aur-err.log"
+    if ! $DOCKER_CMD "${docker_run_args[@]}" 2>"$aur_err_log"; then
+        if grep -qi 'network\|veth\|bridge\|endpoint' "$aur_err_log" 2>/dev/null; then
             log_warn "Docker networking failed -- restarting Docker to recover..."
             log_info "Requesting sudo to restart Docker service..."
             sudo systemctl restart docker
             sleep 3
             log_info "Retrying AUR build..."
-            $DOCKER_CMD "${docker_run_args[@]}" || die "AUR build failed after Docker restart"
+            $DOCKER_CMD "${docker_run_args[@]}" || die "AUR build failed after Docker restart (log: $aur_err_log)"
         else
-            cat /tmp/docker-aur-err.log >&2
-            die "AUR package build failed"
+            cat "$aur_err_log" >&2
+            die "AUR package build failed (log: $aur_err_log)"
         fi
     fi
-    rm -f /tmp/docker-aur-err.log
+    rm -f "$aur_err_log"
 
     rm -f "$pkg_list_file"
     log_info "AUR packages saved to: $prebuilt_dir"
@@ -426,25 +440,59 @@ run_build() {
     log_info "Pulling Arch Linux image..."
     $DOCKER_CMD pull archlinux:latest
 
-    log_info "Starting build container..."
-    if ! $DOCKER_CMD run "${docker_args[@]}" archlinux:latest /build/src/builder/build.sh 2>/tmp/docker-build-err.log; then
-        if grep -qi 'network\|veth\|bridge\|endpoint' /tmp/docker-build-err.log 2>/dev/null; then
+    # Use a named container so it survives if our terminal disconnects.
+    # --rm would destroy the container (and all build progress) the moment
+    # Docker's output pipe breaks.  With a named container, the build keeps
+    # running inside Docker even if this script dies.
+    local container_name="smplos-build-$$"
+    # Remove stale containers from previous failed runs
+    $DOCKER_CMD rm -f "$container_name" &>/dev/null || true
+
+    # Swap --rm for --name in docker_args
+    local run_args=()
+    for arg in "${docker_args[@]}"; do
+        [[ "$arg" == "--rm" ]] && continue
+        run_args+=("$arg")
+    done
+
+    local build_err_log="$LOG_DIR/build-err.log"
+
+    log_info "Starting build container ($container_name)..."
+    log_info "Build log: $BUILD_LOG"
+
+    run_docker_build() {
+        $DOCKER_CMD run --name "$1" "${run_args[@]}" archlinux:latest \
+            /build/src/builder/build.sh 2>"$build_err_log" | tee -a "$BUILD_LOG"
+        # Return the exit code of docker run, not tee
+        return "${PIPESTATUS[0]}"
+    }
+
+    if ! run_docker_build "$container_name"; then
+        if grep -qi 'network\|veth\|bridge\|endpoint' "$build_err_log" 2>/dev/null; then
             log_warn "Docker networking failed -- restarting Docker to recover..."
             log_info "Requesting sudo to restart Docker service..."
+            $DOCKER_CMD rm -f "$container_name" &>/dev/null || true
             sudo systemctl restart docker
             sleep 3
             log_info "Retrying ISO build..."
-            $DOCKER_CMD run "${docker_args[@]}" archlinux:latest /build/src/builder/build.sh \
-                || { cat /tmp/docker-build-err.log >&2; die "ISO build failed after Docker restart"; }
+            run_docker_build "${container_name}-retry" \
+                || { cat "$build_err_log" >&2; die "ISO build failed after Docker restart (log: $BUILD_LOG)"; }
+            $DOCKER_CMD rm -f "${container_name}-retry" &>/dev/null || true
         else
-            cat /tmp/docker-build-err.log >&2
-            die "ISO build failed"
+            cat "$build_err_log" >&2
+            log_error "Build container '$container_name' preserved for debugging"
+            log_error "  Inspect: docker logs $container_name"
+            log_error "  Shell:   docker start -ai $container_name"
+            die "ISO build failed (log: $BUILD_LOG)"
         fi
     fi
-    rm -f /tmp/docker-build-err.log
+
+    # Success -- clean up container and error log
+    $DOCKER_CMD rm -f "$container_name" &>/dev/null || true
+    rm -f "$build_err_log"
 
     echo ""
-    log_info "Build complete!"
+    log_info "Build complete! (log: $BUILD_LOG)"
     ls -lh "$release_dir"/*.iso 2>/dev/null || log_warn "No ISO found in output"
 }
 

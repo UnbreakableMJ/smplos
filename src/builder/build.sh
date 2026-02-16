@@ -6,6 +6,13 @@
 #
 set -euo pipefail
 
+# Ignore SIGPIPE so the build survives if the host terminal disconnects.
+# When build-iso.sh's stdout pipe breaks (terminal closed, SSH dropped, etc.),
+# every write() to stdout returns EPIPE.  Without this trap, bash kills us on
+# the first echo that fails.  With it, echo simply fails silently and the build
+# continues -- the ISO still gets created.
+trap '' PIPE
+
 ###############################################################################
 # Configuration
 ###############################################################################
