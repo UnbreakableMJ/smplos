@@ -417,7 +417,8 @@ done
 
 clear
 
-# Save extra keyboard layout choice (may be empty)
+# Save keyboard layout choices for install.sh
+echo "$(keymap_to_xkb "$keyboard")" >user_primary_xkb.txt
 echo "${extra_layout:-}" >user_extra_layout.txt
 echo "${extra_variant:-}" >user_extra_variant.txt
 
@@ -647,7 +648,7 @@ if [[ $1 == "dry" ]]; then
   echo -e "\n\nUser Credentials:"
   cat user_credentials.json
 
-  echo -e "\n\nExtra Layout: $(cat user_extra_layout.txt) / Variant: $(cat user_extra_variant.txt)"
+  echo -e "\n\nPrimary XKB: $(cat user_primary_xkb.txt) / Extra Layout: $(cat user_extra_layout.txt) / Variant: $(cat user_extra_variant.txt)"
 
-  rm user_configuration.json user_credentials.json user_extra_layout.txt user_extra_variant.txt
+  rm user_configuration.json user_credentials.json user_primary_xkb.txt user_extra_layout.txt user_extra_variant.txt
 fi

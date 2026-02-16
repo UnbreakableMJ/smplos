@@ -106,6 +106,10 @@ CTR=""
 
 detect_runtime() {
     if command -v podman &>/dev/null; then
+        # mkarchiso needs real root (loop devices, mount, mksquashfs).
+        # Rootless podman --privileged only grants unprivileged-user caps,
+        # which is not enough.  So we need sudo for the actual container runs,
+        # but podman itself needs no daemon or background service.
         CTR="sudo podman"
         log_info "Container runtime: Podman ($(podman --version 2>/dev/null | head -1))"
     elif command -v docker &>/dev/null; then
@@ -196,6 +200,14 @@ check_prerequisites() {
     fi
 
     log_info "Prerequisites OK"
+
+    # Pre-authenticate sudo so the password prompt happens here with context,
+    # not mid-build with no explanation.  mkarchiso requires real root for
+    # loop devices, mount, and mksquashfs -- rootless containers can't do that.
+    if [[ "$CTR" == sudo* ]]; then
+        log_info "sudo is required: mkarchiso needs root for loop devices and mounts"
+        sudo -v || die "sudo authentication failed"
+    fi
 }
 
 ###############################################################################
@@ -399,6 +411,14 @@ main() {
 
     parse_args "$@"
     check_prerequisites
+
+    # Keep sudo alive in the background (build takes 15+ min, default sudo
+    # timeout is ~5 min).  Killed automatically when this script exits.
+    if [[ "$CTR" == sudo* ]]; then
+        ( while true; do sudo -v; sleep 60; done ) &
+        SUDO_KEEPALIVE_PID=$!
+        trap 'kill $SUDO_KEEPALIVE_PID 2>/dev/null' EXIT
+    fi
 
     if [[ -z "$SKIP_AUR" ]]; then
         build_missing_aur_packages

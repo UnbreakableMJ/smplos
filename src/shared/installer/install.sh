@@ -61,9 +61,8 @@ fi
 if [[ -n "${SMPLOS_EXTRA_LAYOUT:-}" ]]; then
   echo "==> Configuring extra keyboard layout: ${SMPLOS_EXTRA_LAYOUT}${SMPLOS_EXTRA_VARIANT:+ ($SMPLOS_EXTRA_VARIANT)}..."
 
-  # Determine the primary XKB layout from the system's configured keymap
-  primary_xkb=$(localectl status 2>/dev/null | awk '/X11 Layout/{print $3}')
-  [[ -z "$primary_xkb" ]] && primary_xkb="us"
+  # Use the primary XKB layout passed from the configurator
+  primary_xkb="${SMPLOS_PRIMARY_XKB:-us}"
 
   # Update Hyprland input.conf with both layouts
   input_conf="$HOME/.config/hypr/input.conf"

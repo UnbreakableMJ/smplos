@@ -111,6 +111,16 @@ emit() {
     # Split comma-separated lists and pick active index
     IFS=',' read -ra layout_arr <<< "$layouts"
     IFS=',' read -ra variant_arr <<< "$variants"
+    # Strip empty entries (e.g. ",ru" -> ["ru"])
+    local clean_layouts=() clean_variants=()
+    for i in "${!layout_arr[@]}"; do
+      local l="${layout_arr[$i]// /}"
+      [[ -z "$l" ]] && continue
+      clean_layouts+=("$l")
+      clean_variants+=("${variant_arr[$i]:-}")
+    done
+    layout_arr=("${clean_layouts[@]}")
+    variant_arr=("${clean_variants[@]}")
     xkb_layout="${layout_arr[$active_idx]:-${layout_arr[0]:-}}"
     xkb_variant="${variant_arr[$active_idx]:-}"
     xkb_layout="${xkb_layout// /}"

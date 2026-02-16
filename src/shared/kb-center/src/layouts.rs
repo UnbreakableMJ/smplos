@@ -254,8 +254,14 @@ pub fn sync_to_compositor(active: &[ActiveLayout]) {
         return;
     }
 
-    let layouts: String = active.iter().map(|a| a.code.as_str()).collect::<Vec<_>>().join(",");
-    let variants: String = active.iter().map(|a| a.variant.as_str()).collect::<Vec<_>>().join(",");
+    // Filter out entries with empty layout codes — Hyprland rejects "(unset)" layouts
+    let valid: Vec<&ActiveLayout> = active.iter().filter(|a| !a.code.trim().is_empty()).collect();
+    if valid.is_empty() {
+        return;
+    }
+
+    let layouts: String = valid.iter().map(|a| a.code.as_str()).collect::<Vec<_>>().join(",");
+    let variants: String = valid.iter().map(|a| a.variant.as_str()).collect::<Vec<_>>().join(",");
 
     // Update input.conf for persistence across reboots
     update_input_conf(&layouts, &variants);
@@ -276,6 +282,16 @@ pub fn sync_to_compositor(active: &[ActiveLayout]) {
 
 /// Update ~/.config/hypr/input.conf with the active layouts so they persist.
 fn update_input_conf(layouts: &str, variants: &str) {
+    // Reject empty or malformed layout strings (e.g. ",ru" or ",")
+    let clean_layouts: String = layouts.split(',').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>().join(",");
+    if clean_layouts.is_empty() {
+        debug_log!("[kb-center] update_input_conf: refusing to write empty layout");
+        return;
+    }
+    let clean_variants: String = variants.split(',').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>().join(",");
+    let layouts = clean_layouts.as_str();
+    let variants = clean_variants.as_str();
+
     let home = match std::env::var("HOME") {
         Ok(h) => h,
         Err(_) => return,
