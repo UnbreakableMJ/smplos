@@ -141,6 +141,16 @@ if [[ -d "$USER_HOME/.config/systemd/user" ]]; then
     run_as_user "systemctl --user restart smplos-app-cache.path" 2>/dev/null || true
 fi
 
+# ── Applications (.desktop files) ───────────────────────────
+if [[ -d "$SHARE/applications" && "$(ls -A "$SHARE/applications" 2>/dev/null)" ]]; then
+    log "Applying .desktop files..."
+    mkdir -p "$USER_HOME/.local/share/applications"
+    cp "$SHARE/applications/"*.desktop "$USER_HOME/.local/share/applications/" 2>/dev/null || true
+    own "$USER_HOME/.local/share/applications/"
+    update-desktop-database "$USER_HOME/.local/share/applications" 2>/dev/null || true
+    log "  $(ls "$SHARE/applications/"*.desktop 2>/dev/null | wc -l) desktop entries installed"
+fi
+
 # ── App cache (populate for launcher) ───────────────────────
 if command -v rebuild-app-cache &>/dev/null; then
     log "Building app cache..."
@@ -188,13 +198,8 @@ fi
 if [[ -d "$SHARE/hypr" && "$(ls -A "$SHARE/hypr" 2>/dev/null)" ]]; then
     log "Applying Hyprland configs..."
     mkdir -p "$USER_HOME/.config/hypr"
-    # Preserve the user's keyboard layout -- skip input.conf if it already exists
-    if [[ -f "$USER_HOME/.config/hypr/input.conf" ]]; then
-        find "$SHARE/hypr" -mindepth 1 -maxdepth 1 ! -name input.conf -exec cp -r {} "$USER_HOME/.config/hypr/" \;
-        log "  (skipped input.conf -- preserving keyboard layout)"
-    else
-        cp -r "$SHARE/hypr/"* "$USER_HOME/.config/hypr/"
-    fi
+    # Overwrite all hypr configs including input.conf
+    cp -r "$SHARE/hypr/"* "$USER_HOME/.config/hypr/"
     own "$USER_HOME/.config/hypr/"
     if [[ -f "$SHARE/hypr/bindings.conf" ]]; then
         mkdir -p "$USER_HOME/.config/smplos"

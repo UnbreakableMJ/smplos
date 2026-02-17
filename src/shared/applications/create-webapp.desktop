@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Create Web App
+Comment=Create an isolated web app launcher
+Exec=st-wl -A 1.0 -e create-webapp
+Terminal=false
+Type=Application
+Icon=applications-internet
+Categories=Network;Utility;
+StartupNotify=true

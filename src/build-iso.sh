@@ -270,7 +270,7 @@ build_missing_aur_packages() {
     printf '%s\n' "${need_build[@]}" > "$pkg_list_file"
 
     $CTR run --rm \
-        --dns 1.1.1.1 --dns 8.8.8.8 \
+        --network=host \
         -v "$prebuilt_dir:/output" \
         -v "$pkg_list_file:/tmp/packages.txt:ro" \
         archlinux:latest bash -c "
@@ -353,7 +353,7 @@ run_build() {
 
     local run_args=(
         --rm --privileged
-        --dns 1.1.1.1 --dns 8.8.8.8
+        --network=host
         -v "$SCRIPT_DIR:/build/src:ro"
         -v "$release_dir:/build/release"
         -v "$cache_dir/offline-repo:/var/cache/smplos/mirror/offline"

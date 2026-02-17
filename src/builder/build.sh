@@ -90,18 +90,80 @@ read_package_list() {
 
 setup_build_env() {
     log_step "Setting up build environment"
+
+    # ── Network connectivity check ──────────────────────────────────────
+    # Fail fast with actionable advice instead of hanging on DNS timeouts.
+    log_step "Checking network connectivity"
+    if curl -sf --max-time 10 --head https://archlinux.org > /dev/null 2>&1; then
+        log_info "Network OK"
+    elif curl -sf --max-time 10 --head http://archlinux.org > /dev/null 2>&1; then
+        log_warn "HTTPS failed but HTTP works -- possible TLS/proxy issue"
+    else
+        log_error "No network connectivity from inside the build container."
+        log_error ""
+        log_error "Troubleshooting:"
+        log_error "  1. Check your internet connection"
+        log_error "  2. Check DNS: run 'host archlinux.org' on the host"
+        log_error "  3. If using Podman, try: podman run --rm --network=host archlinux:latest curl -I https://archlinux.org"
+        log_error "  4. If using Docker, try: docker run --rm archlinux:latest curl -I https://archlinux.org"
+        log_error "  5. Firewall/VPN may be blocking container traffic"
+        log_error "  6. Corporate proxy? Set HTTP_PROXY/HTTPS_PROXY env vars"
+        die "Cannot proceed without network access"
+    fi
+
+    # ── Bootstrap mirrorlist ────────────────────────────────────────────
+    # Minimal reliable mirrors to bootstrap pacman + install reflector.
+    cat > /etc/pacman.d/mirrorlist << 'MIRRORS'
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch
+MIRRORS
     
     # Enable multilib repo (needed for lib32-* Wine/audio packages)
     if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
         echo -e '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist' >> /etc/pacman.conf
     fi
 
-    # Initialize pacman keyring
+    # Disable pacman's 10-second download timeout.  Containers and CI runners
+    # often have slow DNS; the default timeout is too aggressive and causes
+    # "Resolving timed out" on perfectly reachable mirrors.
+    if ! grep -q '^DisableDownloadTimeout' /etc/pacman.conf; then
+        sed -i '/^\[options\]/a DisableDownloadTimeout' /etc/pacman.conf
+    fi
+
+    # Initialize pacman keyring and populate trust database
     pacman-key --init
+    pacman-key --populate archlinux
     retry pacman --noconfirm -Sy archlinux-keyring
+    # Re-populate after update so newly-shipped keys are trusted
+    pacman-key --populate archlinux
+
+    # Install reflector first so we can find the fastest mirrors
+    retry pacman --noconfirm -S reflector
+
+    # ── Reflector: find 20 best mirrors ───────────────────────────────
+    # --sort age  = most recently synced mirrors (metadata-only, no download
+    #              speed tests, finishes in seconds).
+    # --fastest N = download-tests candidates and is SLOW -- do NOT use it.
+    # 30s timeout prevents reflector from hanging on flaky networks.
+    # Falls back to the bootstrap mirrors on failure.
+    log_step "Finding fastest mirrors with reflector"
+    if timeout 30 reflector \
+        --protocol https \
+        --age 6 \
+        --latest 20 \
+        --sort age \
+        --save /etc/pacman.d/mirrorlist 2>&1; then
+        log_info "Reflector: $(grep -c '^Server' /etc/pacman.d/mirrorlist) mirrors selected"
+    else
+        log_warn "Reflector timed out or failed, continuing with bootstrap mirrors"
+    fi
+
+    # Re-sync databases with the optimized mirrorlist
+    retry pacman --noconfirm -Sy
     
     # Install build dependencies (these go in the build container, not the ISO)
-    retry pacman --noconfirm -Sy archiso git sudo base-devel jq grub
+    retry pacman --noconfirm -S archiso git sudo base-devel jq grub
     
     # Create build user for any AUR packages we need to compile
     if ! id "builder" &>/dev/null; then
@@ -245,6 +307,37 @@ download_packages() {
         log_info "Cleaning stale package versions..."
         paccache -rk1 -c "$OFFLINE_MIRROR_DIR" 2>/dev/null || true
     fi
+    
+    # Remove .sig files from offline mirror.  With SigLevel = Optional TrustAll,
+    # pacman skips verification when no .sig exists.  But if a .sig IS present,
+    # pacman verifies it against the container's keyring — which may lack the
+    # signing key, causing "corrupted package (PGP signature)" errors.
+    # Deleting .sig files avoids this entirely.
+    local sig_count
+    sig_count=$(find "$OFFLINE_MIRROR_DIR" -name '*.sig' 2>/dev/null | wc -l)
+    if [[ $sig_count -gt 0 ]]; then
+        log_info "Removing $sig_count .sig files (not needed with TrustAll)..."
+        find "$OFFLINE_MIRROR_DIR" -name '*.sig' -delete
+    fi
+    
+    # Validate package integrity: remove any corrupted files now so they don't
+    # cause checksum errors later during mkarchiso's pacstrap
+    log_info "Validating package integrity..."
+    local bad=0
+    for pkg_file in "$OFFLINE_MIRROR_DIR"/*.pkg.tar.{zst,xz}; do
+        [[ -f "$pkg_file" ]] || continue
+        if ! bsdtar -tf "$pkg_file" &>/dev/null; then
+            log_warn "Removing corrupted package: $(basename "$pkg_file")"
+            rm -f "$pkg_file" "${pkg_file}.sig"
+            ((bad++)) || true
+        fi
+    done
+    if [[ $bad -gt 0 ]]; then
+        log_warn "Removed $bad corrupted package(s), re-downloading..."
+        retry pacman --noconfirm -Syw "${all_download_packages[@]}" \
+            --cachedir "$OFFLINE_MIRROR_DIR/" \
+            --dbpath /tmp/offlinedb
+    fi
 }
 
 ###############################################################################
@@ -284,6 +377,36 @@ process_aur_packages() {
     done
     
     log_info "AUR packages processed"
+    
+    # AUR packages have dependencies on official repo packages (e.g. eww needs
+    # gtk-layer-shell, logseq needs nodejs, vscode needs lsof).  Extract those
+    # deps from the prebuilt .PKGINFO and download them to the offline mirror.
+    log_info "Resolving AUR package dependencies..."
+    local aur_deps=()
+    for pkg in "${AUR_PACKAGES[@]}"; do
+        shopt -s nullglob
+        for pkg_file in "$OFFLINE_MIRROR_DIR"/${pkg}-[0-9]*.pkg.tar.{zst,xz}; do
+            [[ -f "$pkg_file" ]] || continue
+            while IFS=' = ' read -r key val; do
+                [[ "$key" == "depend" ]] && aur_deps+=("${val%%[><=]*}")
+            done < <(bsdtar -xOf "$pkg_file" .PKGINFO 2>/dev/null || true)
+        done
+        shopt -u nullglob
+    done
+    
+    if [[ ${#aur_deps[@]} -gt 0 ]]; then
+        # Deduplicate
+        aur_deps=($(printf '%s\n' "${aur_deps[@]}" | sort -u))
+        log_info "Downloading ${#aur_deps[@]} dependencies of AUR packages..."
+        # Download deps (skips already-cached ones); ignore errors for
+        # deps that are already satisfied by packages in the mirror
+        pacman --noconfirm -Syw "${aur_deps[@]}" \
+            --cachedir "$OFFLINE_MIRROR_DIR/" \
+            --dbpath /tmp/offlinedb 2>&1 || true
+        
+        # Remove any .sig files from the new downloads
+        find "$OFFLINE_MIRROR_DIR" -name '*.sig' -delete 2>/dev/null || true
+    fi
 }
 
 ###############################################################################
@@ -328,18 +451,52 @@ create_repo_database() {
 setup_pacman_conf() {
     log_step "Setting up pacman configuration"
     
-    # Create pacman.conf that uses our offline mirror
+    # Create pacman.conf that uses our offline mirror.
+    # ONLY the offline repo is listed here -- online repos are intentionally
+    # excluded.  Including [core]/[extra]/[multilib] causes mkarchiso's
+    # pacstrap to pull newer versions from the internet whose PGP signatures
+    # may not match the container's keyring, leading to intermittent
+    # "corrupted package (PGP signature)" failures.  All packages we need
+    # are already downloaded into the offline mirror by download_packages().
     cat > "$PROFILE_DIR/pacman.conf" << 'PACMANCONF'
+[options]
+HoldPkg     = pacman glibc
+Architecture = auto
+ParallelDownloads = 5
+SigLevel    = Optional TrustAll
+LocalFileSigLevel = Optional
+# CacheDir MUST be set to the offline mirror.  Without it, mkarchiso's
+# _make_pacman_conf() falls back to the system CacheDir (the host's
+# /var/cache/pacman/pkg mounted read-only).  Those host packages have PGP
+# signatures that don't match the container's keyring, causing "corrupted
+# package (PGP signature)" errors during pacstrap.
+CacheDir    = /var/cache/smplos/mirror/offline/
+
+[offline]
+SigLevel = Optional TrustAll
+Server = file:///var/cache/smplos/mirror/offline/
+PACMANCONF
+
+    # Create a symlink so mkarchiso can access the offline mirror
+    mkdir -p /var/cache/smplos/mirror
+    if [[ ! -L /var/cache/smplos/mirror/offline && "$OFFLINE_MIRROR_DIR" != "/var/cache/smplos/mirror/offline" ]]; then
+        ln -sf "$OFFLINE_MIRROR_DIR" /var/cache/smplos/mirror/offline
+    fi
+    
+    # The live ISO's pacman.conf uses standard repos but with CacheDir pointing
+    # to the offline mirror.  This way pacman resolves packages from a single
+    # source per repo (no duplicate-provider prompts that break --silent mode),
+    # but serves them from the local cache -- no download needed.
+    # Post-install, install.sh restores a standard config.
+    mkdir -p "$PROFILE_DIR/airootfs/etc"
+    cat > "$PROFILE_DIR/airootfs/etc/pacman.conf" << 'LIVECONF'
 [options]
 HoldPkg     = pacman glibc
 Architecture = auto
 ParallelDownloads = 5
 SigLevel    = Required DatabaseOptional
 LocalFileSigLevel = Optional
-
-[offline]
-SigLevel = Optional TrustAll
-Server = file:///var/cache/smplos/mirror/offline/
+CacheDir    = /var/cache/smplos/mirror/offline/
 
 [core]
 Include = /etc/pacman.d/mirrorlist
@@ -349,17 +506,7 @@ Include = /etc/pacman.d/mirrorlist
 
 [multilib]
 Include = /etc/pacman.d/mirrorlist
-PACMANCONF
-
-    # Create a symlink so mkarchiso can access the offline mirror
-    mkdir -p /var/cache/smplos/mirror
-    if [[ ! -L /var/cache/smplos/mirror/offline && "$OFFLINE_MIRROR_DIR" != "/var/cache/smplos/mirror/offline" ]]; then
-        ln -sf "$OFFLINE_MIRROR_DIR" /var/cache/smplos/mirror/offline
-    fi
-    
-    # Also copy pacman.conf to the ISO's /etc for use after boot
-    mkdir -p "$PROFILE_DIR/airootfs/etc"
-    cp "$PROFILE_DIR/pacman.conf" "$PROFILE_DIR/airootfs/etc/pacman.conf"
+LIVECONF
     
     log_info "pacman.conf configured"
 }

@@ -1,0 +1,115 @@
+#!/bin/bash
+# smplOS: Create a web app launcher with an isolated browser profile
+# Usage: create-webapp [--url URL] [--name NAME]
+#        create-webapp                  (interactive via terminal)
+
+set -euo pipefail
+
+APPS_DIR="$HOME/.local/share/applications"
+ICONS_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+
+url=""
+name=""
+
+# Parse args for non-interactive use
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --url)  url="$2"; shift 2 ;;
+    --name) name="$2"; shift 2 ;;
+    -h|--help)
+      echo "Usage: create-webapp [--url URL] [--name NAME]"
+      echo "Creates an isolated web app with its own browser profile."
+      exit 0 ;;
+    *) shift ;;
+  esac
+done
+
+# Interactive prompts if missing
+if [[ -z "$url" ]]; then
+  if command -v gum &>/dev/null; then
+    url=$(gum input --placeholder "https://example.com" --prompt "URL> " --prompt.foreground "#00ff00") || exit 1
+  else
+    read -rp "URL: " url
+  fi
+fi
+
+if [[ -z "$name" ]]; then
+  # Suggest a name from the domain
+  suggested=$(echo "$url" | sed 's|https\?://||; s|/.*||; s|^www\.||; s|\..*||')
+  suggested="${suggested^}"  # capitalize first letter
+  if command -v gum &>/dev/null; then
+    name=$(gum input --placeholder "$suggested" --value "$suggested" --prompt "Name> " --prompt.foreground "#00ff00") || exit 1
+  else
+    read -rp "Name [$suggested]: " name
+    [[ -z "$name" ]] && name="$suggested"
+  fi
+fi
+
+# Validate
+[[ "$url" != http* ]] && url="https://$url"
+[[ -z "$name" ]] && { echo "Name cannot be empty" >&2; exit 1; }
+
+# Ask about security mode (banking, finance, sensitive sites)
+secure=""
+if command -v gum &>/dev/null; then
+  if gum confirm "Enable secure mode? (disables extensions/plugins -- for banking, email, etc.)"; then
+    secure="--secure"
+  fi
+else
+  read -rp "Enable secure mode? (for banking/sensitive sites) [y/N] " ans
+  [[ "${ans,,}" == "y" ]] && secure="--secure"
+fi
+
+# Derive a safe filename from the name
+safe_name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+
+desktop_file="$APPS_DIR/webapp-${safe_name}.desktop"
+
+# Check if it already exists
+if [[ -f "$desktop_file" ]]; then
+  echo "Web app '$name' already exists: $desktop_file"
+  if command -v gum &>/dev/null; then
+    gum confirm "Overwrite?" || exit 0
+  else
+    read -rp "Overwrite? [y/N] " ans
+    [[ "${ans,,}" != "y" ]] && exit 0
+  fi
+fi
+
+# Try to fetch favicon for the icon
+icon_path=""
+mkdir -p "$ICONS_DIR"
+domain=$(echo "$url" | sed 's|https\?://||; s|/.*||')
+favicon_url="https://www.google.com/s2/favicons?domain=${domain}&sz=256"
+icon_file="$ICONS_DIR/webapp-${safe_name}.png"
+if curl -sL --max-time 5 "$favicon_url" -o "$icon_file" 2>/dev/null && [[ -s "$icon_file" ]]; then
+  icon_path="webapp-${safe_name}"
+else
+  rm -f "$icon_file"
+  icon_path="applications-internet"  # fallback generic icon
+fi
+
+# Create the .desktop file
+mkdir -p "$APPS_DIR"
+cat > "$desktop_file" << EOF
+[Desktop Entry]
+Version=1.0
+Name=$name
+Comment=$name -- web app
+Exec=launch-webapp --name $safe_name $secure $url
+Terminal=false
+Type=Application
+Icon=$icon_path
+Categories=Network;WebApps;
+StartupNotify=true
+EOF
+
+# Update desktop database so it appears in launchers
+update-desktop-database "$APPS_DIR" 2>/dev/null || true
+
+echo "Created: $name -> $url"
+echo "Profile: ~/.local/share/webapps/$safe_name/"
+echo "Launcher: $desktop_file"
+
+# Rebuild app cache if available (so it shows in our launcher immediately)
+command -v rebuild-app-cache &>/dev/null && rebuild-app-cache 2>/dev/null &

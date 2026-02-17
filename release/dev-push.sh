@@ -19,8 +19,8 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[push]${NC} $*"; }
 
 # Clean and recreate
-rm -rf "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center}
-mkdir -p "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center}
+rm -rf "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center,applications}
+mkdir -p "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center,applications}
 
 # EWW
 cp -r "$SRC_DIR/shared/eww/"* "$SHARE/eww/"
@@ -41,6 +41,12 @@ log "Bin: $(find "$SHARE/bin" -type f | wc -l) files"
 # Shared configs
 cp -r "$SRC_DIR/shared/configs/"* "$SHARE/configs/"
 log "Configs: $(find "$SHARE/configs" -type f | wc -l) files"
+
+# Applications (.desktop files)
+if [[ -d "$SRC_DIR/shared/applications" ]]; then
+    cp "$SRC_DIR/shared/applications/"*.desktop "$SHARE/applications/" 2>/dev/null || true
+    log "Applications: $(find "$SHARE/applications" -type f | wc -l) files"
+fi
 
 # Hyprland configs + shared bindings.conf
 cp -r "$SRC_DIR/compositors/hyprland/hypr/"* "$SHARE/hypr/"

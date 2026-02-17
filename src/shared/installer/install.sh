@@ -64,11 +64,30 @@ if [[ -n "${SMPLOS_EXTRA_LAYOUT:-}" ]]; then
   # Use the primary XKB layout passed from the configurator
   primary_xkb="${SMPLOS_PRIMARY_XKB:-us}"
 
-  # Update Hyprland input.conf with both layouts
+  # Build layout list with us always first.
+  # Hyprland resolves keybinds against layout #1 by default, so putting us
+  # first means Super+W etc. work regardless of which layout is active.
+  layouts=""
+  variants=""
+  if [[ "$primary_xkb" == "us" ]]; then
+    # Primary is US, extra goes second
+    layouts="us,${SMPLOS_EXTRA_LAYOUT}"
+    variants=",${SMPLOS_EXTRA_VARIANT:-}"
+  elif [[ "${SMPLOS_EXTRA_LAYOUT}" == "us" ]]; then
+    # Extra is US — swap so US is first, primary goes second
+    layouts="us,${primary_xkb}"
+    variants="${SMPLOS_EXTRA_VARIANT:-},"
+  else
+    # Neither is US — prepend us so keybinds always work
+    layouts="us,${primary_xkb},${SMPLOS_EXTRA_LAYOUT}"
+    variants=",,${SMPLOS_EXTRA_VARIANT:-}"
+  fi
+
+  # Update Hyprland input.conf with the layout list
   input_conf="$HOME/.config/hypr/input.conf"
   if [[ -f "$input_conf" ]]; then
-    sed -i "s/^    kb_layout = .*/    kb_layout = ${primary_xkb},${SMPLOS_EXTRA_LAYOUT}/" "$input_conf"
-    sed -i "s/^    kb_variant = .*/    kb_variant = ,${SMPLOS_EXTRA_VARIANT:-}/" "$input_conf"
+    sed -i "s/^    kb_layout = .*/    kb_layout = ${layouts}/" "$input_conf"
+    sed -i "s/^    kb_variant = .*/    kb_variant = ${variants}/" "$input_conf"
     # Add grp:alt_shift_toggle to kb_options (keep existing options like compose:caps)
     current_opts=$(grep '^\s*kb_options' "$input_conf" | sed 's/.*= *//')
     if [[ -n "$current_opts" && "$current_opts" != *"grp:"* ]]; then
@@ -167,6 +186,25 @@ for pam_file in /etc/pam.d/login /etc/pam.d/greetd; do
     }
   fi
 done
+
+# Set the default keyring password to empty so it auto-unlocks on autologin.
+# Since we use LUKS disk encryption, the keyring password is redundant --
+# the disk encryption IS the security boundary.
+echo "==> Setting empty keyring password for autologin..."
+keyring_dir="$HOME/.local/share/keyrings"
+mkdir -p "$keyring_dir"
+if [[ ! -f "$keyring_dir/default" ]]; then
+  # Create the default keyring with an empty password
+  cat > "$keyring_dir/Default_keyring.keyring" << 'KEYRING'
+[keyring]
+display-name=Default keyring
+ctime=0
+mtime=0
+lock-on-idle=false
+lock-after=false
+KEYRING
+  echo 'Default_keyring' > "$keyring_dir/default"
+fi
 
 # Setup greetd with autologin
 echo "==> Setting up greetd autologin..."

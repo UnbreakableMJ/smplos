@@ -93,63 +93,44 @@ window {
 
 /* Logo */
 .logo {
-  font-size: 16px;
-  color: $accent;
   padding: 2px 6px;
   border-radius: 4px;
   transition: all 200ms ease;
-}
-
-.logo label {
-  color: $accent;
 }
 
 .logo:hover {
   background-color: $bg-light;
 }
 
-/* Workspaces */
+/* Workspaces (dot indicators) */
 .workspaces {
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
-.workspace {
-  padding: 2px 10px;
-  border-radius: 12px;
-  color: rgba($accent, 0.8);
+.ws-dot {
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 50%;
+  padding: 0;
   transition: all 200ms ease;
 }
 
-.workspace label {
-  color: rgba($accent, 0.8);
+.ws-dot label {
+  font-size: 14px;
+  color: rgba($fg-dim, 0.35);
 }
 
-.workspace .ws-icon {
-  font-size: 13px;
+.ws-dot:hover label {
+  color: rgba($accent, 0.6);
 }
 
-.workspace .ws-dot {
-  font-size: 6px;
+.ws-dot.occupied label {
+  color: rgba($fg, 0.5);
 }
 
-.workspace:hover {
-  background-color: rgba($bg-light, 0.6);
+.ws-dot.active label {
   color: $accent;
-}
-.workspace:hover label {
-  color: $accent;
-}
-
-.workspace.occupied label {
-  color: $accent;
-}
-
-.workspace.active {
-  background-color: $accent;
-  font-weight: bold;
-}
-.workspace.active label {
-  color: $bg;
+  font-size: 16px;
 }
 
 /* Window title */

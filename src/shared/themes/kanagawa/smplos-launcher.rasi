@@ -101,9 +101,11 @@ entry {
     enabled:                     true;
     expand:                      true;
     padding:                     @element-padding;
-    background-color:            transparent;
-    text-color:                  inherit;
+    border-radius:               0px 8px 8px 0px;
+    background-color:            @background-alt;
+    text-color:                  @foreground;
     cursor:                      text;
+    cursor-width:                2px;
     placeholder:                 "Search...";
     placeholder-color:           @foreground-dim;
 }
@@ -236,7 +238,7 @@ element-text {
     cursor:                      inherit;
     vertical-align:              0.5;
     horizontal-align:            0.0;
-    highlight:                   bold #7e9cd8;
+    highlight:                   bold underline;
 }
 
 /*****----- Message -----*****/

@@ -109,6 +109,7 @@ amd-ucode
 # ── Installer ────────────────────────────────────────────────
 archinstall
 openssl
+zram-generator
 
 # ── Login Manager / Boot Splash ──────────────────────────────
 greetd

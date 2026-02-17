@@ -680,3 +680,20 @@ Window opacity is controlled at two levels:
 MIT License. See [LICENSE](LICENSE) for details.
 
 Terminal emulators (st, st-wl) are under their own licenses - see their respective directories.
+
+---
+
+## 🏅 Contributors
+
+Thanks to everyone who has contributed to smplOS!
+
+[![Contributors](https://contrib.rocks/image?repo=KonTy/smplos)](https://github.com/KonTy/smplos/graphs/contributors)
+
+## 📊 GitHub Stats
+
+![Stars](https://img.shields.io/github/stars/KonTy/smplos?style=for-the-badge&color=%230567ff)
+![Forks](https://img.shields.io/github/forks/KonTy/smplos?style=for-the-badge&color=%2300b4d8)
+![Issues](https://img.shields.io/github/issues/KonTy/smplos?style=for-the-badge&color=%23e63946)
+![Last Commit](https://img.shields.io/github/last-commit/KonTy/smplos?style=for-the-badge&color=%2338b000)
+![License](https://img.shields.io/github/license/KonTy/smplos?style=for-the-badge&color=%23a855f7)
+![Repo Size](https://img.shields.io/github/repo-size/KonTy/smplos?style=for-the-badge&color=%23f97316)

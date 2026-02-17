@@ -483,6 +483,7 @@ build_packages_json() {
     while IFS= read -r line; do
       # Skip comments and blank lines
       [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+      line="${line%%#*}"  # strip inline comments
       local pkg
       pkg=$(echo "$line" | xargs)  # trim whitespace
       [[ -z "$pkg" ]] && continue
@@ -511,6 +512,7 @@ build_packages_json() {
   if [[ -f "$packages_extra_file" && -s "$packages_extra_file" ]]; then
     while IFS= read -r line; do
       [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+      line="${line%%#*}"  # strip inline comments
       local pkg
       pkg=$(echo "$line" | xargs)
       [[ -z "$pkg" ]] && continue

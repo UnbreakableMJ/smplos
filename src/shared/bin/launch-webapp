@@ -1,18 +1,33 @@
 #!/bin/bash
 # smplOS: Launch a URL as a standalone web app (Chromium --app mode)
-# Usage: launch-webapp <url>
+# Usage: launch-webapp [--name NAME] [--secure] <url>
 #
 # Each webapp gets its own isolated profile (--user-data-dir) so cookies,
 # logins, and local storage don't cross-contaminate with normal browsing
 # or other webapps. Profiles live under ~/.local/share/webapps/<name>/.
 #
+# --name NAME uses NAME as the profile directory (allows multiple accounts
+#             for the same site, e.g. "github-work" and "github-personal").
+#             Without --name, falls back to the URL domain.
+#
 # Uses the default browser if it supports --app (Brave, Chrome, Chromium,
 # Edge, etc.), otherwise falls back to brave-browser.
 
-[[ -z "$1" ]] && { echo "Usage: launch-webapp <url>" >&2; exit 1; }
+url="" app_name="" secure=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --name)   app_name="$2"; shift 2 ;;
+    --secure) secure=1; shift ;;
+    *)        url="$1"; shift ;;
+  esac
+done
 
-# Derive a stable profile name from the URL's domain
-app_name=$(echo "$1" | sed 's|https\?://||; s|/.*||; s|^www\.||; s|\..*||')
+[[ -z "$url" ]] && { echo "Usage: launch-webapp [--name NAME] [--secure] <url>" >&2; exit 1; }
+
+# Fall back to domain-based name if --name not provided
+if [[ -z "$app_name" ]]; then
+  app_name=$(echo "$url" | sed 's|https\?://||; s|/.*||; s|^www\.||; s|\..*||')
+fi
 profile_dir="$HOME/.local/share/webapps/$app_name"
 mkdir -p "$profile_dir"
 
@@ -31,4 +46,15 @@ bin=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' \
 
 [[ -z "$bin" ]] && bin="brave"
 
-exec "$bin" --app="$1" --user-data-dir="$profile_dir"
+# Extra hardening flags (opt-in via WEBAPP_SECURE=1 or --secure)
+secure_flags=()
+if [[ "${WEBAPP_SECURE:-}" == "1" || "$secure" == "1" ]]; then
+  secure_flags=(
+    --disable-extensions
+    --disable-plugins
+    --disable-background-networking
+    --no-first-run
+  )
+fi
+
+exec "$bin" --app="$1" --user-data-dir="$profile_dir" "${secure_flags[@]}"

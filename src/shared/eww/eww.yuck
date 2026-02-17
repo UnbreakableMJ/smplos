@@ -62,29 +62,30 @@
 ;; WIDGETS
 ;; ============================================================================
 
-;; Logo/Menu button
+;; Logo/Menu button (themed SVG -- colors baked by theme-set)
 (defwidget logo []
   (button :class "logo"
           :onclick "pkill -x rofi && pkill -xf 'bash.*/launcher' || launcher &"
-    "󰣇"))
+    (image :path "icons/status/start.svg"
+           :image-width 18 :image-height 18)))
 
-;; Workspaces widget (4 fixed buttons with category icons)
-;; 1=terminal/code  2=web  3=media  4=files
+;; Workspaces widget (7 dot indicators, active = accent-filled circle)
 (defwidget workspaces-widget []
   (box :class "workspaces" :orientation "h" :space-evenly false :spacing 2
-    (workspace-btn :ws 1 :icon "")
-    (workspace-btn :ws 2 :icon "")
-    (workspace-btn :ws 3 :icon "")
-    (workspace-btn :ws 4 :icon "")))
+    (workspace-dot :ws 1)
+    (workspace-dot :ws 2)
+    (workspace-dot :ws 3)
+    (workspace-dot :ws 4)
+    (workspace-dot :ws 5)
+    (workspace-dot :ws 6)
+    (workspace-dot :ws 7)))
 
-(defwidget workspace-btn [ws icon]
-  (button :class {active-workspace == ws ? "workspace active" :
-                  arraylength(jq(workspaces, "map(select(. == ${ws}))")) > 0 ? "workspace occupied" :
-                  "workspace"}
+(defwidget workspace-dot [ws]
+  (button :class {active-workspace == ws ? "ws-dot active" :
+                  arraylength(jq(workspaces, "map(select(. == ${ws}))")) > 0 ? "ws-dot occupied" :
+                  "ws-dot"}
           :onclick "hyprctl dispatch workspace ${ws} 2>/dev/null || true"
-    (box :class "ws-inner" :orientation "h" :space-evenly false :spacing 4
-      (label :class "ws-icon" :text icon)
-      (label :class "ws-dot" :text {active-workspace == ws ? "" : ""}))))
+    (label :text "●")))
 
 ;; Window title
 (defwidget window []
@@ -194,11 +195,11 @@
 (defwidget bar-left []
   (box :class "bar-left" :orientation "h" :space-evenly false :halign "start" :spacing 12
     (logo)
-    (workspaces-widget)
     (window)))
 
 (defwidget bar-center []
-  (box :class "bar-center" :orientation "h" :space-evenly false :halign "center"))
+  (box :class "bar-center" :orientation "h" :space-evenly false :halign "center"
+    (workspaces-widget)))
 
 (defwidget bar-right []
   (box :class "bar-right" :orientation "h" :space-evenly false :halign "end" :spacing 8
