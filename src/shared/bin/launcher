@@ -1,21 +1,12 @@
 #!/bin/bash
-# smplOS launcher -- rofi with Apps (drun) + Settings (script mode) tabs
+# smplOS launcher -- rofi with categorized app tabs + Settings
 # Inspired by adi1090x type-1/style-15
 # Keybinding: Super (bare key press) | EWW bar logo button
 #
-# Uses native rofi modi -- mode-switcher renders clickable tabs.
-# Alt+A / Alt+S jump to a specific mode AND clear the search filter
-# by restarting rofi via kb-custom exit codes.
-#
-# Exit codes:
-#   0  -- user selected an entry (rofi handles launch for drun;
-#          settings script-mode handles launch internally)
-#   1  -- cancelled (Escape)
-#   10 -- kb-custom-1 (Alt+A) → restart showing Apps
-#   11 -- kb-custom-2 (Alt+S) → restart showing Settings
+# Uses script modes backed by ~/.cache/smplos/app_index.
 
 THEME="$HOME/.config/rofi/smplos-launcher.rasi"
-MODE="${1:-drun}"
+MODE="${1:-apps}"
 
 # Ensure settings cache exists
 [[ ! -f "$HOME/.cache/smplos/app_index" ]] && rebuild-app-cache 2>/dev/null
@@ -23,16 +14,12 @@ MODE="${1:-drun}"
 theme_args=()
 [[ -f "$THEME" ]] && theme_args=(-theme "$THEME")
 
-while true; do
-  rofi -show "$MODE" -show-icons \
-    -kb-custom-1 "Alt+a" \
-    -kb-custom-2 "Alt+s" \
-    "${theme_args[@]}"
-  rc=$?
-
-  case $rc in
-    10) MODE=drun     ; continue ;;  # Alt+A → Apps (fresh filter)
-    11) MODE=settings ; continue ;;  # Alt+S → Settings (fresh filter)
-    *)  exit 0 ;;                    # 0 = launched, 1 = Escape
-  esac
-done
+rofi -show "$MODE" -show-icons \
+  -modi "multimedia:rofi-apps-multimedia-src,development:rofi-apps-development-src,internet:rofi-apps-internet-src,office:rofi-apps-office-src,apps:rofi-apps-apps-src,settings:rofi-settings-src" \
+  -display-multimedia "Multimedia" \
+  -display-development "Development" \
+  -display-internet "Internet" \
+  -display-office "Office" \
+  -display-apps "Apps" \
+  -display-settings "Settings" \
+  "${theme_args[@]}"

@@ -1,0 +1,26 @@
+#!/bin/bash
+# rofi script-mode source for categorized app entries
+# Usage via wrapper scripts:
+#   ROFI_APP_GROUP=<group> rofi-apps-src
+# Groups: multimedia, development, internet, office, apps
+
+set -euo pipefail
+
+CACHE="$HOME/.cache/smplos/app_index"
+GROUP="${ROFI_APP_GROUP:-apps}"
+
+# Handle selection -- launch and close rofi
+if [[ "${ROFI_RETV:-0}" -eq 1 && -n "${ROFI_INFO:-}" ]]; then
+    ${ROFI_INFO} &>/dev/null &
+    exit 0
+fi
+
+[[ -f "$CACHE" ]] || exit 0
+
+grep ";${GROUP};" "$CACHE" | while IFS=';' read -r name exec _cat icon; do
+    if [[ -n "$icon" ]]; then
+        printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$name" "$icon" "$exec"
+    else
+        printf '%s\0info\x1f%s\n' "$name" "$exec"
+    fi
+done
