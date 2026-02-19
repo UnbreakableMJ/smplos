@@ -4,15 +4,15 @@
 
 [urgency_low]
     background = "#45475a"
-    foreground = "#cdd6f4"
+    foreground = "#b4d0fb"
     frame_color = "#585b70"
 
 [urgency_normal]
     background = "#1e1e2e"
-    foreground = "#cdd6f4"
+    foreground = "#b4d0fb"
     frame_color = "#89b4fa"
 
 [urgency_critical]
     background = "#f38ba8"
-    foreground = "#cdd6f4"
+    foreground = "#b4d0fb"
     frame_color = "#f38ba8"

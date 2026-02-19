@@ -1284,6 +1284,86 @@ static int wlloadcolor(int i, const char *name, uint32_t *color)
 	return wld_lookup_named_color(name, color);
 }
 
+#if ALPHA_PATCH
+static bool
+parse_theme_alpha_file(const char *path, float *out_alpha)
+{
+	FILE *fp;
+	char line[512];
+	char value[64];
+
+	if (!path || !out_alpha)
+		return false;
+
+	fp = fopen(path, "r");
+	if (!fp)
+		return false;
+
+	while (fgets(line, sizeof(line), fp)) {
+		float parsed;
+		if (sscanf(line, " term_opacity_active = \"%63[0-9.]\"", value) == 1 ||
+		    sscanf(line, "term_opacity_active = \"%63[0-9.]\"", value) == 1 ||
+		    sscanf(line, " term_opacity_active = %63[0-9.]", value) == 1 ||
+		    sscanf(line, "term_opacity_active = %63[0-9.]", value) == 1) {
+			parsed = strtof(value, NULL);
+			if (parsed >= 0.0f && parsed <= 1.0f) {
+				*out_alpha = parsed;
+				fclose(fp);
+				return true;
+			}
+		}
+	}
+
+	fclose(fp);
+	return false;
+}
+
+static bool
+load_theme_alpha(float *out_alpha)
+{
+	char path[PATH_MAX];
+	char theme_name[128] = {0};
+	FILE *fp;
+	char *home;
+
+	if (!out_alpha)
+		return false;
+
+	home = getenv("HOME");
+	if (!home || !*home)
+		return false;
+
+	/* Primary active theme path */
+	snprintf(path, sizeof(path), "%s/.config/smplos/current/theme/colors.toml", home);
+	if (parse_theme_alpha_file(path, out_alpha))
+		return true;
+
+	/* Fallback: resolve from current theme name */
+	snprintf(path, sizeof(path), "%s/.config/smplos/current/theme.name", home);
+	fp = fopen(path, "r");
+	if (!fp)
+		return false;
+	if (!fgets(theme_name, sizeof(theme_name), fp)) {
+		fclose(fp);
+		return false;
+	}
+	fclose(fp);
+	theme_name[strcspn(theme_name, "\r\n")] = '\0';
+	if (!theme_name[0])
+		return false;
+
+	snprintf(path, sizeof(path), "%s/.config/smplos/themes/%s/colors.toml", home, theme_name);
+	if (parse_theme_alpha_file(path, out_alpha))
+		return true;
+
+	snprintf(path, sizeof(path), "%s/.local/share/smplos/themes/%s/colors.toml", home, theme_name);
+	if (parse_theme_alpha_file(path, out_alpha))
+		return true;
+
+	return false;
+}
+#endif // ALPHA_PATCH
+
 void xloadcols(void)
 {
 	int i;
@@ -1304,9 +1384,14 @@ void xloadcols(void)
 
 	#if ALPHA_PATCH
 	/* set alpha value of bg color */
-	if (opt_alpha)
-	{
-		alpha = strtof(opt_alpha, NULL);
+	if (opt_alpha) {
+		float cli_alpha = strtof(opt_alpha, NULL);
+		if (cli_alpha >= 0.0f && cli_alpha <= 1.0f)
+			alpha = cli_alpha;
+	} else {
+		float theme_alpha;
+		if (load_theme_alpha(&theme_alpha))
+			alpha = theme_alpha;
 	}
 	term_alpha = (uint8_t)(alpha*255.0);
 	#endif // ALPHA_PATCH

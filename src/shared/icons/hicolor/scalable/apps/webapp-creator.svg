@@ -1,0 +1,15 @@
+<svg width="64px" height="64px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <style type="text/css">
+    .ColorScheme-Text {
+      color: #4d4d4d; /* A fallback color for viewers that don't support themes */
+    }
+  </style>
+  <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ColorScheme-Text">
+    <path d="M13 21H3.6C3.26863 21 3 20.7314 3 20.4V3.6C3 3.26863 3.26863 3 3.6 3H20.4C20.7314 3 21 3.26863 21 3.6V13"/>
+    <path d="M3 8H21"/>
+    <path d="M6 6H6.01"/>
+    <path d="M9 6H9.01"/>
+    <path d="M12 6H12.01"/>
+    <path d="M18 15.5V21M15.5 18H20.5"/>
+  </g>
+</svg>

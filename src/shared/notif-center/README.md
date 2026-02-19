@@ -15,6 +15,9 @@ From this directory:
 - Dismiss one: `dunstctl history-rm <id>`
 - Clear all: `dunstctl history-clear`
 - Open: `gtk-launch <desktop_entry>` fallback to app name command
+- Summary actions:
+	- `System Update` → `smplos-update`
+	- `Web App Launch Error` → open `~/.cache/smplos/launch-webapp.log` via `xdg-open`
 
 ## Theme source
 

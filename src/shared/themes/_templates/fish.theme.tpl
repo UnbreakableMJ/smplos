@@ -14,7 +14,7 @@ set -g fish_color_comment {{ color8_strip }}
 set -g fish_color_selection --background={{ color0_strip }}
 set -g fish_color_operator {{ color6_strip }}
 set -g fish_color_escape {{ color5_strip }}
-set -g fish_color_autosuggestion {{ color8_strip }}
+set -g fish_color_autosuggestion {{ autosuggestion_strip }}
 set -g fish_color_search_match {{ color4_strip }} --background={{ bg_light_strip }}
 set -g fish_color_valid_path --underline
 

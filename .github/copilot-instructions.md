@@ -137,3 +137,44 @@ src/compositors/dwm/        ← ONLY DWM-specific config (future)
 - Keep the package list minimal. Audit regularly for bloat.
 - Known bloat candidates: wofi, fuzzel, rofi-wayland (3 redundant launchers),
   alacritty + foot (unused terminals alongside st), nwg-look (unused GUI tool).
+
+### Offline-First Installation (CRITICAL)
+
+The ISO must support **fully offline installation** — no internet required.
+This is a hard requirement. Every package type is embedded in the ISO:
+
+- **Official repo packages** → downloaded to `/var/cache/smplos/mirror/offline/`
+  during build, served via `[offline]` repo with `file://` URL + `repo-add` DB.
+- **AUR packages** → prebuilt as `.pkg.tar.zst`, injected into the offline mirror.
+- **Flatpaks** → bundled into the ISO (future).
+- **AppImages** → copied into the ISO at `/opt/appimages/`.
+
+**Two-phase pacman config:**
+
+1. **Live ISO + install** → `pacman.conf` uses ONLY `[offline]` repo:
+   ```
+   [offline]
+   SigLevel = Optional TrustAll
+   Server = file:///var/cache/smplos/mirror/offline/
+   ```
+   No `[core]`/`[extra]`/`[multilib]` — no internet dependency.
+   The `configurator`'s archinstall JSON must have empty `custom_servers: []`
+   so archinstall doesn't override the mirrorlist with online URLs.
+
+2. **Post-install** (`install.sh`) → restores standard online repos:
+   ```
+   [core] / [extra] / [multilib] → Include = /etc/pacman.d/mirrorlist
+   ```
+   Runs `reflector` (with timeout + fallback) to find fastest mirrors.
+   Cleans up offline mirror cache.
+
+**Rules to prevent regression:**
+
+- NEVER put online mirror URLs in the live ISO's `pacman.conf`.
+- NEVER put online mirror URLs in archinstall's `mirror_config.custom_servers`.
+- Build container changes (reflector, bootstrap mirrors, etc.) must NEVER leak
+  into `$PROFILE_DIR/airootfs/` — the build container and the live ISO have
+  **separate** pacman configs.
+- The build container's `$PROFILE_DIR/pacman.conf` (for mkarchiso) and
+  `$PROFILE_DIR/airootfs/etc/pacman.conf` (for the live ISO) must both use
+  the `[offline]` repo exclusively.

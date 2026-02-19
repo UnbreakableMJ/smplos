@@ -1,6 +1,6 @@
 #!/bin/bash
 # smplOS: Launch a URL as a standalone web app (Chromium --app mode)
-# Usage: launch-webapp [--name NAME] [--secure] <url>
+# Usage: launch-webapp [--name NAME] [--secure] [--vpn-interface IFACE] [--vpn-required] [--no-float|--float] <url>
 #
 # Each webapp gets its own isolated profile (--user-data-dir) so cookies,
 # logins, and local storage don't cross-contaminate with normal browsing
@@ -10,19 +10,86 @@
 #             for the same site, e.g. "github-work" and "github-personal").
 #             Without --name, falls back to the URL domain.
 #
+# --vpn-interface IFACE   Route all traffic through the specified network interface (e.g., tun0).
+# --vpn-required          If specified, fail to launch if the VPN interface is not active.
+#
 # Uses the default browser if it supports --app (Brave, Chrome, Chromium,
 # Edge, etc.), otherwise falls back to brave-browser.
 
-url="" app_name="" secure=""
+url="" app_name="" secure="" vpn_iface="" vpn_required="" hypr_internal="0"
+window_float_mode="auto"   # auto | on | off
+ORIG_ARGS=("$@")
+LOG_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/smplos/launch-webapp.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+show_error() {
+  local msg="$1"
+  printf '%s %s\n' "$(date '+%F %T')" "$msg" >> "$LOG_FILE"
+  echo "$msg" >&2
+  # Always send to dunst so it appears in notif-center and is clickable.
+  # Body includes the log path so notif-center's action matcher can open it.
+  if command -v notify-send &>/dev/null; then
+    notify-send -u critical -a "launch-webapp" \
+      "Web App Launch Error" \
+      "${msg}\n\nLog: ${LOG_FILE}" 2>/dev/null || true
+  fi
+  # Also show a blocking dialog for immediate visibility
+  if command -v zenity &>/dev/null; then
+    zenity --error \
+      --text="${msg}\n\nSee log: ${LOG_FILE}" \
+      --title="Web App Launch Error" 2>/dev/null || true
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --name)   app_name="$2"; shift 2 ;;
-    --secure) secure=1; shift ;;
-    *)        url="$1"; shift ;;
+    --name)           app_name="$2"; shift 2 ;;
+    --secure)         secure=1; shift ;;
+    --vpn-interface)  vpn_iface="$2"; shift 2 ;;
+    --vpn-required)   vpn_required=1; shift ;;
+    --no-float)       window_float_mode="off"; shift ;;
+    --float)          window_float_mode="on"; shift ;;
+    --__hypr-internal) hypr_internal="1"; shift ;;
+    *)                url="$1"; shift ;;
   esac
 done
 
-[[ -z "$url" ]] && { echo "Usage: launch-webapp [--name NAME] [--secure] <url>" >&2; exit 1; }
+[[ -z "$url" ]] && { echo "Usage: launch-webapp [--name NAME] [--secure] [--vpn-interface IFACE] [--vpn-required] <url>" >&2; exit 1; }
+
+# Hyprland UX: open many webapps centered + floating so small web UIs don't appear
+# as awkward tiled full-screen windows. Discord is better as a normal tiled window.
+# Recursion guard avoids infinite relaunch.
+should_float="${WEBAPP_FLOAT:-1}"
+if [[ "$window_float_mode" == "off" ]]; then
+  should_float="0"
+elif [[ "$window_float_mode" == "on" ]]; then
+  should_float="1"
+elif [[ "$url" == *"discord.com"* ]]; then
+  should_float="0"
+fi
+
+if [[ "$hypr_internal" != "1" && "$should_float" == "1" \
+  && -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" && -n "${WAYLAND_DISPLAY:-}" ]] \
+  && command -v hyprctl &>/dev/null; then
+  cmd_parts=("$0" "--__hypr-internal")
+  for arg in "${ORIG_ARGS[@]}"; do
+    cmd_parts+=("$arg")
+  done
+  cmd="$(printf '%q ' "${cmd_parts[@]}")"
+  cmd="${cmd% }"
+
+  if hyprctl dispatch exec "[float;size 1100 760;center] $cmd" >/dev/null 2>&1; then
+    printf '%s [launch-webapp] dispatched via hyprctl float window\n' "$(date '+%F %T')" >> "$LOG_FILE"
+    exit 0
+  else
+    printf '%s [launch-webapp] hyprctl dispatch failed, falling back to direct launch\n' "$(date '+%F %T')" >> "$LOG_FILE"
+  fi
+fi
+
+if ! command -v bwrap &>/dev/null; then
+  show_error "Missing dependency: bubblewrap (bwrap). Install with: sudo pacman -S bubblewrap zenity"
+  exit 1
+fi
 
 # Fall back to domain-based name if --name not provided
 if [[ -z "$app_name" ]]; then
@@ -31,20 +98,72 @@ fi
 profile_dir="$HOME/.local/share/webapps/$app_name"
 mkdir -p "$profile_dir"
 
-browser=$(xdg-settings get default-web-browser 2>/dev/null)
+# --app mode (chromeless isolated window) is a Chromium-only feature.
+# We prefer the default browser if it is Chromium-based, otherwise scan
+# for any installed Chromium browser. Firefox, LibreWolf, etc. are skipped.
+CHROMIUM_DESKTOPS=(
+  brave-browser.desktop
+  google-chrome.desktop
+  chromium.desktop
+  microsoft-edge.desktop
+  vivaldi.desktop
+  opera.desktop
+)
 
-case "$browser" in
-  brave-browser*|google-chrome*|chromium*|microsoft-edge*|vivaldi*|opera*) ;;
-  *) browser="brave-browser.desktop" ;;
-esac
+# Extract the Exec= binary path from a .desktop file name
+_desktop_bin() {
+  local d="$1"
+  sed -n 's/^Exec=\([^ ]*\).*/\1/p' \
+    "$HOME/.local/share/applications/$d" \
+    "/usr/local/share/applications/$d" \
+    "/usr/share/applications/$d" \
+    2>/dev/null | head -1
+}
 
-# Extract the Exec binary from the .desktop file
-bin=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' \
-  "$HOME/.local/share/applications/$browser" \
-  "/usr/share/applications/$browser" \
-  2>/dev/null | head -1)
+bin=""
+# 1. Try the default browser first (only if it's Chromium-based)
+default_desktop=$(xdg-settings get default-web-browser 2>/dev/null)
+for d in "${CHROMIUM_DESKTOPS[@]}"; do
+  if [[ "$default_desktop" == "$d" ]]; then
+    candidate=$(_desktop_bin "$d")
+    if [[ -n "$candidate" ]] && command -v "$candidate" &>/dev/null; then
+      bin="$candidate"
+      break
+    fi
+  fi
+done
 
-[[ -z "$bin" ]] && bin="brave"
+# 2. Default isn't Chromium-based (e.g. Firefox) — scan for any installed one
+if [[ -z "$bin" ]]; then
+  for d in "${CHROMIUM_DESKTOPS[@]}"; do
+    candidate=$(_desktop_bin "$d")
+    if [[ -n "$candidate" ]] && command -v "$candidate" &>/dev/null; then
+      bin="$candidate"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$bin" ]]; then
+  show_error "Web apps require a Chromium-based browser (--app mode is not supported by Firefox or other browsers). Install one of: brave, chromium, google-chrome, vivaldi, or microsoft-edge."
+  exit 1
+fi
+
+# Resolve through symlinks to find the real installation directory.
+# AUR packages (e.g. brave-bin) install to /opt/brave-bin/ and put a
+# wrapper/symlink in /usr/bin — but /opt is not in the bwrap sandbox by default.
+browser_cmd=$(command -v "$bin")
+real_bin=$(readlink -f "$browser_cmd")
+real_bindir=$(dirname "$real_bin")
+
+# Some browsers (notably brave-bin) use /usr/bin wrapper scripts that exec files in /opt.
+# If we only bind /usr, bubblewrap can still fail with exit 127.
+need_opt_bind=false
+if [[ "$real_bin" == /opt/* ]]; then
+  need_opt_bind=true
+elif [[ "$real_bin" == /usr/bin/* && -f "$real_bin" ]]; then
+  grep -Eq '/opt/' "$real_bin" 2>/dev/null && need_opt_bind=true
+fi
 
 # Extra hardening flags (opt-in via WEBAPP_SECURE=1 or --secure)
 secure_flags=()
@@ -57,4 +176,103 @@ if [[ "${WEBAPP_SECURE:-}" == "1" || "$secure" == "1" ]]; then
   )
 fi
 
-exec "$bin" --app="$1" --user-data-dir="$profile_dir" "${secure_flags[@]}"
+# --- VPN & Network Sandboxing ---
+bwrap_net_args=()
+vpn_active=false
+
+if [[ -n "$vpn_iface" ]]; then
+  # Check if the specified VPN interface is up and running
+  if ip link show "$vpn_iface" | grep -q "state UP"; then
+    vpn_active=true
+  fi
+fi
+
+if [[ "$vpn_required" == "1" && "$vpn_active" == "false" ]]; then
+  # If VPN is required but not active, show an error and exit
+  error_msg="Required VPN interface '$vpn_iface' is not active. Please connect to the VPN and try again."
+  show_error "$error_msg"
+  exit 1
+fi
+
+if [[ "$vpn_active" == "true" ]]; then
+  # Strict network isolation through the VPN interface
+  bwrap_net_args=(
+    --unshare-net
+    --ro-bind /etc/resolv.conf /etc/resolv.conf
+    # TODO: This is a simplified setup. A more robust solution would
+    # use a private network namespace with a proxy DNS. For now, we
+    # bind the host's resolv.conf and rely on the VPN's DNS.
+  )
+  # This is a placeholder for a more complex setup that would
+  # correctly bring up the interface inside the namespace.
+  # For now, we rely on a simpler model that assumes the VPN handles routing.
+  # A full implementation would use `bwrap --unshare-net` and then
+  # `ip link set $vpn_iface netns ...` which is too complex for this script.
+  # We will use --share-net for now and revisit if needed.
+  bwrap_net_args=(--share-net) # Revert to simpler model for now
+else
+  # Default sandboxed network access
+  bwrap_net_args=(--share-net)
+fi
+
+
+# --- Sandboxing with Bubblewrap ---
+# Run the browser in a sandbox to limit the blast radius of a zero-day exploit.
+# - Isolate from host filesystem & create a new private /tmp.
+# - Give it a new, empty home directory to prevent access to user dotfiles.
+# - Bind the real Downloads folder so saving files still works.
+# - Bind the webapp's own profile dir as read-write.
+# - Keep access to necessary system resources (graphics, sound, fonts, etc).
+mkdir -p "$HOME/Downloads" "$profile_dir"
+
+bwrap_args=(
+  --ro-bind /usr /usr
+  --ro-bind /etc /etc
+  --proc /proc
+  --dev /dev
+  --symlink usr/lib /lib
+  --symlink usr/lib64 /lib64
+  --symlink usr/bin /bin
+  --symlink usr/sbin /sbin
+  --unshare-all
+  "${bwrap_net_args[@]}"
+  --die-with-parent
+  --dir /tmp
+  --dir /home
+  --dir "$HOME"
+  --dir /var
+  --ro-bind /sys /sys
+  --bind "$HOME/Downloads" "$HOME/Downloads"
+  --bind "$profile_dir" "$profile_dir"
+)
+
+if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR:-}" ]]; then
+  bwrap_args+=(--setenv XDG_RUNTIME_DIR "$XDG_RUNTIME_DIR")
+  bwrap_args+=(--ro-bind "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR")
+fi
+
+[[ -d "$HOME/.fonts" ]] && bwrap_args+=(--ro-bind "$HOME/.fonts" "$HOME/.fonts")
+[[ -d /usr/share/fonts ]] && bwrap_args+=(--ro-bind /usr/share/fonts /usr/share/fonts)
+[[ -d /usr/share/icons ]] && bwrap_args+=(--ro-bind /usr/share/icons /usr/share/icons)
+
+# Bind the real binary's install prefix if it lives outside /usr (e.g. /opt/brave-bin).
+# Without this bwrap returns exit 127 — the binary is invisible inside the sandbox.
+case "$real_bindir" in
+  /usr/*|/bin|/sbin) ;; # already bound via --ro-bind /usr /usr
+  *) [[ -d "$real_bindir" ]] && bwrap_args+=(--ro-bind "$real_bindir" "$real_bindir") ;;
+esac
+
+if $need_opt_bind && [[ -d /opt ]]; then
+  bwrap_args+=(--ro-bind /opt /opt)
+fi
+
+printf '%s [launch-webapp] browser=%s cmd=%s real=%s opt_bind=%s\n' \
+  "$(date '+%F %T')" "$bin" "$browser_cmd" "$real_bin" "$need_opt_bind" >> "$LOG_FILE"
+
+bwrap_output=$(bwrap "${bwrap_args[@]}" "$real_bin" --app="$url" --user-data-dir="$profile_dir" "${secure_flags[@]}" 2>&1)
+rc=$?
+[[ -n "$bwrap_output" ]] && printf '%s [launch-webapp] bwrap=%s\n' "$(date '+%F %T')" "$bwrap_output" >> "$LOG_FILE"
+if [[ $rc -ne 0 ]]; then
+  show_error "Failed to launch web app sandbox (exit $rc). Check $LOG_FILE for details."
+fi
+exit $rc

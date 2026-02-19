@@ -160,6 +160,9 @@ fi
 # ── notif-center ─────────────────────────────────────────────
 if [[ -f "$SHARE/notif-center/notif-center" ]]; then
     log "Applying notif-center binary..."
+    # Kill running instance first — Linux won't let cp overwrite an in-use binary
+    run_as_user "pkill -x notif-center" 2>/dev/null || true
+    sleep 0.3
     # If a directory exists (from previous bug), remove it
     if [[ -d "/usr/local/bin/notif-center" ]]; then
         rm -rf "/usr/local/bin/notif-center"
@@ -194,6 +197,20 @@ if [[ -f "$SHARE/disp-center/disp-center" ]]; then
     log "  done"
 fi
 
+# ── webapp-center ────────────────────────────────────────────
+if [[ -f "$SHARE/webapp-center/webapp-center" ]]; then
+    log "Applying webapp-center binary..."
+    run_as_user "pkill -x webapp-center" 2>/dev/null || true
+    sleep 0.3
+    if [[ -d "/usr/local/bin/webapp-center" ]]; then
+        rm -rf "/usr/local/bin/webapp-center"
+    fi
+    cp "$SHARE/webapp-center/webapp-center" "/usr/local/bin/"
+    chmod +x "/usr/local/bin/webapp-center"
+    own "/usr/local/bin/webapp-center"
+    log "  done"
+fi
+
 # ── Hyprland configs ────────────────────────────────────────
 if [[ -d "$SHARE/hypr" && "$(ls -A "$SHARE/hypr" 2>/dev/null)" ]]; then
     log "Applying Hyprland configs..."
@@ -220,14 +237,17 @@ if [[ -d "$SHARE/themes" && "$(ls -A "$SHARE/themes" 2>/dev/null)" ]]; then
     log "  done"
 fi
 
-# ── st-wl terminal (only when 'st' arg passed -- replacing st while running from it kills the shell) ──
-if [[ -f "$SHARE/st/st-wl" ]] && [[ " ${*:-} " == *" st "* ]]; then
+# ── st-wl terminal ──────────────────────────────────────────
+if [[ -f "$SHARE/st/st-wl" ]]; then
     log "Installing st-wl binary..."
     cp "$SHARE/st/st-wl" /usr/local/bin/st-wl
     chmod +x /usr/local/bin/st-wl
+    if [[ -f "$SHARE/st/st-wl.desktop" ]]; then
+        cp "$SHARE/st/st-wl.desktop" /usr/local/share/applications/st-wl.desktop 2>/dev/null || \
+        cp "$SHARE/st/st-wl.desktop" /usr/share/applications/st-wl.desktop 2>/dev/null || true
+        update-desktop-database /usr/local/share/applications 2>/dev/null || true
+    fi
     log "  done"
-elif [[ -f "$SHARE/st/st-wl" ]]; then
-    log "Skipping st-wl (pass 'st' arg to install, e.g.: sudo bash /mnt/dev-apply.sh st)"
 fi
 
 # ── Logseq theme plugins ────────────────────────────────────
@@ -245,6 +265,24 @@ if [[ -f "$USER_HOME/.config/xdg-desktop-portal/portals.conf" ]]; then
     log "Restarting xdg-desktop-portal..."
     run_as_user "systemctl --user restart xdg-desktop-portal" 2>/dev/null || warn "  portal restart failed"
     log "  done"
+fi
+
+# ── Pacman HoldPkg safety (for testing installer behavior) ──
+if [[ -f /etc/pacman.conf ]]; then
+    if grep -q '^HoldPkg' /etc/pacman.conf; then
+        if ! grep -Eq '^HoldPkg.*\bbrave-bin\b' /etc/pacman.conf; then
+            log "Adding brave-bin to pacman HoldPkg..."
+            sed -i '/^HoldPkg/s/$/ brave-bin/' /etc/pacman.conf
+            log "  done"
+        fi
+    else
+        log "Adding HoldPkg with brave-bin to pacman.conf..."
+        awk '
+            /^\[options\]$/ { print; print "HoldPkg     = pacman glibc brave-bin"; next }
+            { print }
+        ' /etc/pacman.conf > /etc/pacman.conf.tmp && mv /etc/pacman.conf.tmp /etc/pacman.conf
+        log "  done"
+    fi
 fi
 
 # ── Ensure essential services ───────────────────────────────

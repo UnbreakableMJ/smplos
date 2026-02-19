@@ -6,6 +6,7 @@
 die() { notify-send "smplOS Settings" "$1"; exit 1; }
 
 term() {
+  command -v terminal &>/dev/null && exec terminal -e "$@"
   if [[ -n "$WAYLAND_DISPLAY" ]]; then st-wl -e "$@"
   else st -e "$@"; fi
 }

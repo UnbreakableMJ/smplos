@@ -1,20 +1,96 @@
 #!/bin/bash
-# Focus an existing window or launch the app if not running
-# Usage: focus-or-launch <window-class> <launch-command...>
+# Focus an existing window or launch the app if not running.
+# Works on Hyprland/Wayland and DWM/X11.
 #
-# Examples:
-#   focus-or-launch firefox firefox
-#   focus-or-launch doublecmd doublecmd
-#   focus-or-launch Missioncenter missioncenter
-#   focus-or-launch st-256color "st-wl -A 1.0 -e btop"
+# Two calling conventions:
+#   focus-or-launch <window-class> <launch-command...>
+#     Classic usage: explicit class + explicit launch command.
+#     e.g. focus-or-launch firefox firefox
+#          focus-or-launch doublecmd doublecmd
+#          focus-or-launch Missioncenter missioncenter
+#          focus-or-launch st-256color "terminal -e btop"
+#
+#   focus-or-launch <name>
+#     Single-arg usage (called by notif-center for notification actions).
+#     <name> is a desktop-entry name (e.g. "signal-desktop", "brave-browser")
+#     or an appname. Tries to focus an existing window, then launches via
+#     gtk-launch (compositor-agnostic) or runs <name> directly.
 
 CLASS="$1"; shift
-[[ -z "$CLASS" || $# -eq 0 ]] && { echo "Usage: focus-or-launch <class> <command...>" >&2; exit 1; }
 
-if hyprctl -j clients | jq -e \
-  --arg c "$CLASS" '.[] | select((.class // "" | test($c; "i")) or (.initialClass // "" | test($c; "i")))' \
-  >/dev/null 2>&1; then
-    hyprctl dispatch focuswindow "class:(?i)${CLASS}"
-else
-    hyprctl dispatch exec -- "$@"
+[[ -z "$CLASS" ]] && { echo "Usage: focus-or-launch <class> [command...]" >&2; exit 1; }
+
+# Re-source Hyprland env so WAYLAND_DISPLAY etc. are available when
+# called from notif-center (which may have a stripped environment).
+if [[ -f "$HOME/.config/hypr/envs.conf" ]]; then
+  while IFS= read -r line; do
+    [[ "$line" =~ ^env\ =\ ([^,]+),(.+)$ ]] && export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
+  done < "$HOME/.config/hypr/envs.conf"
 fi
+
+# Detect compositor
+IS_HYPRLAND=false
+IS_X11=false
+[[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]] && IS_HYPRLAND=true
+[[ -z "$WAYLAND_DISPLAY" && -n "$DISPLAY" ]] && IS_X11=true
+
+# --- Try to focus an existing window ---
+focus_existing() {
+  local cls="$1"
+  if $IS_HYPRLAND; then
+    hyprctl -j clients 2>/dev/null \
+      | jq -e --arg c "$cls" '.[] | select((.class//"" | test($c;"i")) or (.initialClass//"" | test($c;"i")))' \
+      >/dev/null 2>&1 \
+      && hyprctl dispatch focuswindow "class:(?i)${cls}" >/dev/null 2>&1 \
+      && return 0
+  fi
+  if $IS_X11; then
+    if command -v wmctrl &>/dev/null; then
+      wmctrl -a "$cls" 2>/dev/null && return 0
+      wmctrl -x -a "${cls}.${cls}" 2>/dev/null && return 0
+    fi
+    if command -v xdotool &>/dev/null; then
+      xdotool search --classname "(?i)$cls" windowactivate 2>/dev/null && return 0
+    fi
+  fi
+  return 1
+}
+
+# --- Launch an app ---
+launch_app() {
+  local name="$1"; shift  # remaining args = explicit command (classic mode)
+
+  if [[ $# -gt 0 ]]; then
+    # Classic mode: explicit launch command given
+    if $IS_HYPRLAND; then
+      hyprctl dispatch exec -- "$@"
+    else
+      setsid "$@" &
+    fi
+    return
+  fi
+
+  # Single-arg mode: use gtk-launch (compositor-agnostic, respects SingleInstance).
+  # gtk-launch reads the .desktop Exec= and uses D-Bus activation when available,
+  # so most apps (Signal, Thunderbird, etc.) raise their existing window.
+  name="${name%.desktop}"
+  desktop_file=""
+  for dir in "$HOME/.local/share/applications" "/usr/local/share/applications" "/usr/share/applications"; do
+    [[ -f "$dir/${name}.desktop" ]] && desktop_file="$dir/${name}.desktop" && break
+  done
+
+  if [[ -n "$desktop_file" ]]; then
+    setsid gtk-launch "$name" &
+  elif command -v "$name" &>/dev/null; then
+    setsid "$name" &
+  else
+    echo "focus-or-launch: could not find or launch '$name'" >&2
+    exit 1
+  fi
+}
+
+if focus_existing "$CLASS"; then
+  exit 0
+fi
+
+launch_app "$CLASS" "$@"

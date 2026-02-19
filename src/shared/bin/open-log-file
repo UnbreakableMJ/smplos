@@ -1,0 +1,47 @@
+#!/bin/bash
+# smplOS: Open a log/text file in the best available editor.
+# Usage: open-log-file <file>
+# Called by notif-center when the user clicks a "Web App Launch Error" notification.
+
+file="${1:-}"
+[[ -z "$file" ]] && { echo "Usage: open-log-file <file>" >&2; exit 1; }
+[[ ! -f "$file" ]] && { echo "File not found: $file" >&2; exit 1; }
+
+# Re-source user environment so Wayland/display vars are available
+# (notif-center may be launched with a stripped env from EWW/Hyprland).
+if [[ -f "$HOME/.config/hypr/envs.conf" ]]; then
+  while IFS= read -r line; do
+    [[ "$line" =~ ^env\ =\ ([^,]+),(.+)$ ]] && export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
+  done < "$HOME/.config/hypr/envs.conf"
+fi
+
+# Use hyprctl dispatch exec for proper Hyprland window placement (centered float).
+# This avoids the window being placed behind notif-center or on another workspace.
+if command -v hyprctl &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
+  hyprctl dispatch exec "[float;size 900 600;center]" "terminal -e micro '$file'" \
+    >/dev/null 2>&1
+  exit 0
+fi
+
+# Non-Hyprland fallback: use the smplOS `terminal` wrapper directly.
+# Falls back through raw terminals if not available.
+for term in terminal st-wl foot st xterm kitty alacritty; do
+  if command -v "$term" &>/dev/null; then
+    setsid "$term" -e micro "$file" &
+    exit 0
+  fi
+done
+
+# Fall back to GUI editors
+for ed in mousepad xed gedit kate geany; do
+  if command -v "$ed" &>/dev/null; then
+    setsid "$ed" "$file" &
+    exit 0
+  fi
+done
+
+# No usable terminal or editor found — tell the user visibly
+msg="Could not find a terminal or text editor to open the log file.\n\nLog location:\n$file\n\nInstall a terminal (e.g. foot) or copy the path above to view it manually."
+notify-send -u critical -a "notif-center" "Cannot Open Log File" "$msg" 2>/dev/null || true
+zenity --error --title="Cannot Open Log File" --text="$msg" --no-wrap 2>/dev/null || true
+exit 1

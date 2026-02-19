@@ -139,6 +139,11 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     {
+        // Debug callback kept for compatibility with UI wiring.
+        ui.on_debug_pointer(|_, _| {});
+    }
+
+    {
         let state = state.clone();
         ui.on_activate(move |id| {
             let _ = state

@@ -483,29 +483,22 @@ PACMANCONF
         ln -sf "$OFFLINE_MIRROR_DIR" /var/cache/smplos/mirror/offline
     fi
     
-    # The live ISO's pacman.conf uses standard repos but with CacheDir pointing
-    # to the offline mirror.  This way pacman resolves packages from a single
-    # source per repo (no duplicate-provider prompts that break --silent mode),
-    # but serves them from the local cache -- no download needed.
-    # Post-install, install.sh restores a standard config.
+    # The live ISO's pacman.conf uses ONLY the offline repo.  All packages are
+    # pre-downloaded into /var/cache/smplos/mirror/offline/ with a repo-add'd
+    # database.  No internet required for installation.
+    # Post-install, install.sh restores a standard config with online mirrors.
     mkdir -p "$PROFILE_DIR/airootfs/etc"
     cat > "$PROFILE_DIR/airootfs/etc/pacman.conf" << 'LIVECONF'
 [options]
 HoldPkg     = pacman glibc
 Architecture = auto
 ParallelDownloads = 5
-SigLevel    = Required DatabaseOptional
+SigLevel    = Optional TrustAll
 LocalFileSigLevel = Optional
-CacheDir    = /var/cache/smplos/mirror/offline/
 
-[core]
-Include = /etc/pacman.d/mirrorlist
-
-[extra]
-Include = /etc/pacman.d/mirrorlist
-
-[multilib]
-Include = /etc/pacman.d/mirrorlist
+[offline]
+SigLevel = Optional TrustAll
+Server = file:///var/cache/smplos/mirror/offline/
 LIVECONF
     
     log_info "pacman.conf configured"

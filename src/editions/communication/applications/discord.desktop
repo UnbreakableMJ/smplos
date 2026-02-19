@@ -2,7 +2,7 @@
 Version=1.0
 Name=Discord
 Comment=Chat, voice & video -- web app
-Exec=launch-webapp https://discord.com/channels/@me
+Exec=launch-webapp --secure https://discord.com/channels/@me
 Terminal=false
 Type=Application
 Icon=discord

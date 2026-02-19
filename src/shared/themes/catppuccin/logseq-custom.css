@@ -6,7 +6,7 @@
   --ls-tertiary-background-color: #585b70 !important;
   --ls-quaternary-background-color: #585b70 !important;
 
-  --ls-primary-text-color: #cdd6f4 !important;
+  --ls-primary-text-color: #b4d0fb !important;
   --ls-secondary-text-color: #585b70 !important;
 
   --ls-link-text-color: #89b4fa !important;
@@ -35,7 +35,7 @@
   --ls-scrollbar-foreground-color: #585b70 !important;
   --ls-scrollbar-background-color: #1e1e2e !important;
 
-  --ls-head-text-color: #cdd6f4 !important;
+  --ls-head-text-color: #b4d0fb !important;
   --ls-icon-color: #585b70 !important;
 
   --color-level-1: #1e1e2e !important;
@@ -58,5 +58,5 @@
 .cm-s-solarized,
 .extensions__code .code-editor {
   background-color: #45475a !important;
-  color: #cdd6f4 !important;
+  color: #b4d0fb !important;
 }

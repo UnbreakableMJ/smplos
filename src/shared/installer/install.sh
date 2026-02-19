@@ -280,7 +280,7 @@ fi
 echo "==> Restoring standard pacman configuration..."
 sudo tee /etc/pacman.conf > /dev/null << 'PACMANEOF'
 [options]
-HoldPkg     = pacman glibc
+HoldPkg     = pacman glibc brave-bin
 Architecture = auto
 ParallelDownloads = 5
 SigLevel    = Required DatabaseOptional
@@ -293,12 +293,35 @@ Include = /etc/pacman.d/mirrorlist
 
 [extra]
 Include = /etc/pacman.d/mirrorlist
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
 PACMANEOF
 
-# Initialize mirrorlist if empty (use geo mirror as default)
-if [[ ! -s /etc/pacman.d/mirrorlist ]]; then
-  echo "==> Setting up default mirror..."
-  echo 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist > /dev/null
+# Initialize mirrorlist with reliable defaults
+if [[ ! -s /etc/pacman.d/mirrorlist ]] || grep -q 'file://' /etc/pacman.d/mirrorlist; then
+  echo "==> Setting up mirrors..."
+  sudo tee /etc/pacman.d/mirrorlist > /dev/null << 'MIRROREOF'
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch
+MIRROREOF
+fi
+
+# Run reflector to find the fastest mirrors for this user's location.
+# Non-blocking: falls back to the defaults above if no internet or reflector fails.
+if command -v reflector &>/dev/null; then
+  echo "==> Finding fastest mirrors with reflector..."
+  if timeout 30 sudo reflector \
+      --protocol https \
+      --age 6 \
+      --latest 20 \
+      --sort age \
+      --save /etc/pacman.d/mirrorlist 2>/dev/null; then
+    echo "    $(grep -c '^Server' /etc/pacman.d/mirrorlist) mirrors selected"
+  else
+    echo "    Reflector failed or timed out, using default mirrors"
+  fi
 fi
 
 # Clean up offline mirror cache

@@ -1,0 +1,44 @@
+#!/bin/bash
+# smplOS: Launch the default terminal with per-theme background opacity
+#
+# Read active terminal opacity from generated Hypr theme config and pass it
+# explicitly via -A on each launch. This keeps st-wl behavior in sync with the
+# currently active theme, similar to kitty.
+#
+# Usage:  terminal              # opens shell
+#         terminal -e nvim      # opens nvim
+
+HOME_DIR="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
+HYPR_THEME="$HOME_DIR/.config/hypr/theme.conf"
+
+is_valid_alpha() {
+    local v="$1"
+    [[ "$v" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]
+}
+
+get_hypr_alpha() {
+    [[ -f "$HYPR_THEME" ]] || return 1
+    sed -n 's/^\$themeTermOpacityActive[[:space:]]*=[[:space:]]*\([^#[:space:]]*\).*/\1/p' "$HYPR_THEME" | head -1
+}
+
+alpha_value=$(get_hypr_alpha 2>/dev/null)
+
+if ! is_valid_alpha "$alpha_value"; then
+    # Fallback to 1.0 if the value is missing, malformed, or not a valid number
+    alpha_value="1.0"
+fi
+
+# For debugging: uncomment the line below to see what alpha is being used.
+# echo "DEBUG: Launching st-wl with alpha: $alpha_value" > /tmp/st-debug.log
+
+if [[ -n "$WAYLAND_DISPLAY" ]]; then
+    if [[ -x /usr/local/bin/st-wl ]]; then
+        exec /usr/local/bin/st-wl -A "$alpha_value" "$@"
+    fi
+    exec st-wl -A "$alpha_value" "$@"
+else
+    if [[ -x /usr/local/bin/st ]]; then
+        exec /usr/local/bin/st -A "$alpha_value" "$@"
+    fi
+    exec st -A "$alpha_value" "$@"
+fi

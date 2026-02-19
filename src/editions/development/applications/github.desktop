@@ -2,7 +2,7 @@
 Version=1.0
 Name=GitHub
 Comment=Code hosting & collaboration -- web app
-Exec=launch-webapp https://github.com
+Exec=launch-webapp --secure https://github.com
 Terminal=false
 Type=Application
 Icon=github

@@ -19,8 +19,8 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[push]${NC} $*"; }
 
 # Clean and recreate
-rm -rf "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center,applications}
-mkdir -p "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center,applications}
+rm -rf "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center,webapp-center,applications}
+mkdir -p "$SHARE"/{eww,bin,hypr,themes,configs,icons,st,notif-center,kb-center,disp-center,webapp-center,applications}
 
 # EWW
 cp -r "$SRC_DIR/shared/eww/"* "$SHARE/eww/"
@@ -107,6 +107,23 @@ else
     log "disp-center: source not found at $DC_DIR, skipping"
 fi
 
+# Webapp Center (build + copy binary)
+WC_DIR="$SRC_DIR/shared/webapp-center"
+WC_BIN="$WC_DIR/target/release/webapp-center"
+if [[ -f "$WC_DIR/Cargo.toml" ]]; then
+    mkdir -p "$SHARE/webapp-center"
+    log "Building webapp-center..."
+    (cd "$WC_DIR" && cargo build --release 2>&1 | tail -1)
+    if [[ -f "$WC_BIN" ]]; then
+        cp "$WC_BIN" "$SHARE/webapp-center/"
+        log "webapp-center: binary copied"
+    else
+        log "webapp-center: build FAILED"
+    fi
+else
+    log "webapp-center: source not found at $WC_DIR, skipping"
+fi
+
 # st-wl terminal (build from source, keep pinned VERSION from config.mk)
 ST_DIR="$SRC_DIR/compositors/hyprland/st"
 if [[ -f "$ST_DIR/st.c" ]]; then
@@ -116,6 +133,7 @@ if [[ -f "$ST_DIR/st.c" ]]; then
     (cd "$ST_DIR" && rm -f config.h && make clean && make -j"$(nproc)") 2>&1 | tail -1
     if [[ -f "$ST_DIR/st-wl" ]]; then
         cp "$ST_DIR/st-wl" "$SHARE/st/"
+        cp "$ST_DIR/st-wl.desktop" "$SHARE/st/" 2>/dev/null || true
         log "st-wl $cur_ver: binary copied"
     else
         log "st-wl: build FAILED"

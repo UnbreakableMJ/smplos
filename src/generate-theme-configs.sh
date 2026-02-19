@@ -70,6 +70,16 @@ generate_theme() {
     printf 's|{{ border_inactive }}|rgba(%saa)|g\n' "$c8_hex" >> "$sed_script"
   fi
 
+  # Autosuggestion default: derive from color8 if not explicitly set
+  if ! grep -q '{{ autosuggestion }}' "$sed_script"; then
+    local as_hex
+    as_hex=$(grep '^color8' "$colors_file" | head -1 | sed 's/.*"\(#[^"]*\)".*/\1/')
+    if [[ -n "${as_hex:-}" ]]; then
+      printf 's|{{ autosuggestion }}|%s|g\n' "$as_hex" >> "$sed_script"
+      printf 's|{{ autosuggestion_strip }}|%s|g\n' "${as_hex#\#}" >> "$sed_script"
+    fi
+  fi
+
   # Expand each template into the theme directory
   local count=0
   local skipped=0

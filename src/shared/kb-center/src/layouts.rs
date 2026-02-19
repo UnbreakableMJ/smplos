@@ -288,7 +288,24 @@ fn update_input_conf(layouts: &str, variants: &str) {
         debug_log!("[kb-center] update_input_conf: refusing to write empty layout");
         return;
     }
-    let clean_variants: String = variants.split(',').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>().join(",");
+
+    // IMPORTANT: variants are positional and must stay aligned with layouts.
+    // Example: layouts="us,ru" with variants=",phonetic" means:
+    //   us -> ""   and   ru -> "phonetic"
+    // Do NOT drop empty variant entries, or alignment shifts and becomes
+    //   us -> "phonetic", ru -> "" (wrong).
+    let layout_count = clean_layouts.split(',').count();
+    let mut variant_parts: Vec<String> = variants
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    if variant_parts.len() < layout_count {
+        variant_parts.resize(layout_count, String::new());
+    } else if variant_parts.len() > layout_count {
+        variant_parts.truncate(layout_count);
+    }
+    let clean_variants = variant_parts.join(",");
+
     let layouts = clean_layouts.as_str();
     let variants = clean_variants.as_str();
 

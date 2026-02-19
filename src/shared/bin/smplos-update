@@ -4,9 +4,11 @@
 # Opens in the user's default terminal.
 
 # Find the default terminal emulator
-# Priority: xdg-terminal-exec > st-wl (Wayland) > st (X11) > foot > xterm
+# Priority: terminal (smplOS wrapper) > xdg-terminal-exec > st-wl > st > foot > xterm
 find_terminal() {
-    if command -v xdg-terminal-exec &>/dev/null; then
+    if command -v terminal &>/dev/null; then
+        echo "terminal"
+    elif command -v xdg-terminal-exec &>/dev/null; then
         echo "xdg-terminal-exec"
     elif [[ -n "$WAYLAND_DISPLAY" ]] && command -v st-wl &>/dev/null; then
         echo "st-wl"

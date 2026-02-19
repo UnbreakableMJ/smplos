@@ -1,8 +1,8 @@
 [Desktop Entry]
 Version=1.0
-Name=Create Web App
-Comment=Create an isolated web app launcher
-Exec=webapp-center --create
+Name=Manage Web Apps
+Comment=Manage sandboxed web app launchers
+Exec=webapp-center
 Terminal=false
 Type=Application
 Icon=applications-internet

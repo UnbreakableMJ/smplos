@@ -17,7 +17,7 @@ configuration {
     background:                  rgba(30,30,46,0.50);
     background-alt:              rgba(69,71,90,0.50);
     background-solid:            #1e1e2e;
-    foreground:                  #cdd6f4;
+    foreground:                  #b4d0fb;
     foreground-dim:              #585b70;
     selected:                    #89b4fa;
     active:                      #89b4fa;

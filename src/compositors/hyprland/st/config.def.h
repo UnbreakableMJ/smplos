@@ -175,9 +175,8 @@ char *termclass = "terminal";
 unsigned int tabspaces = 8;
 
 #if ALPHA_PATCH
-/* bg opacity — set to 1.0 so Hyprland's per-theme opacity rule is the sole
- * source of transparency.  st's own alpha would multiply on top, causing
- * double-transparency and preventing theme switching from working correctly. */
+/* bg opacity — default fallback. wl.c loads term_opacity_active from the
+ * active smplOS theme when available, so this is only used as a last resort. */
 #define DEFAULT_ALPHA 1.0
 float alpha = DEFAULT_ALPHA;
 uint8_t term_alpha = (uint8_t)(DEFAULT_ALPHA*255.0);

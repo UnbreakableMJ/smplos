@@ -23,8 +23,13 @@ pipewire
 pipewire-alsa
 pipewire-pulse
 pipewire-jack
+gst-plugin-pipewire
+libpulse
 wireplumber
 alsa-utils
+sof-firmware
+alsa-firmware
+rtkit
 
 # ── Display / Input ──────────────────────────────────────────
 brightnessctl
@@ -64,6 +69,7 @@ libsecret
 jq
 socat
 inotify-tools
+xdg-utils
 gum
 ripgrep
 fd
@@ -77,6 +83,8 @@ zip
 wget
 curl
 micro
+bubblewrap
+zenity
 
 # ── Development ──────────────────────────────────────────────
 git
@@ -85,12 +93,20 @@ base-devel
 # ── Network ──────────────────────────────────────────────────
 networkmanager
 network-manager-applet
+reflector
 bluez
 bluez-utils
 blueman
 
 # ── Display Extras ───────────────────────────────────────────
 gammastep
+
+# ── Filesystem Tools ──────────────────────────────────────────
+btrfs-progs
+snapper
+grub-btrfs
+snap-pac              # auto-create btrfs snapshots on pacman transactions
+fzf                   # terminal fuzzy selector (used by manage-webapps)
 
 # ── Bootloaders ──────────────────────────────────────────────
 grub
