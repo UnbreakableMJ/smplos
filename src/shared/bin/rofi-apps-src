@@ -2,12 +2,20 @@
 # rofi script-mode source for categorized app entries
 # Usage via wrapper scripts:
 #   ROFI_APP_GROUP=<group> rofi-apps-src
-# Groups: multimedia, development, internet, office, apps
+# Groups: all, multimedia, development, internet, office, apps
+#
+# Behavior:
+#   - Empty search: show only entries in the selected category group.
+#   - Non-empty search: search globally across ALL app groups.
 
 set -euo pipefail
 
 CACHE="$HOME/.cache/smplos/app_index"
-GROUP="${ROFI_APP_GROUP:-apps}"
+GROUP="${ROFI_APP_GROUP:-all}"
+QUERY="${1:-}"
+QUERY_LC="${QUERY,,}"
+GLOBAL_SEARCH=false
+[[ -n "$QUERY_LC" ]] && GLOBAL_SEARCH=true
 
 # Handle selection -- launch and close rofi
 if [[ "${ROFI_RETV:-0}" -eq 1 && -n "${ROFI_INFO:-}" ]]; then
@@ -17,10 +25,29 @@ fi
 
 [[ -f "$CACHE" ]] || exit 0
 
-grep ";${GROUP};" "$CACHE" | while IFS=';' read -r name exec _cat icon; do
-    if [[ -n "$icon" ]]; then
-        printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$name" "$icon" "$exec"
-    else
-        printf '%s\0info\x1f%s\n' "$name" "$exec"
+while IFS=';' read -r name exec cat icon; do
+    # Keep this source app-focused; settings has its own tab.
+    [[ "$cat" == "settings" ]] && continue
+
+    # Category view when search is empty
+    if ! $GLOBAL_SEARCH; then
+        if [[ "$GROUP" != "all" && "$cat" != "$GROUP" ]]; then
+            continue
+        fi
     fi
-done
+
+    # Global search across all app groups
+    if $GLOBAL_SEARCH; then
+        haystack="${name,,} ${exec,,} ${cat,,}"
+        [[ "$haystack" == *"$QUERY_LC"* ]] || continue
+        display="[$cat] $name"
+    else
+        display="$name"
+    fi
+
+    if [[ -n "$icon" ]]; then
+        printf '%s\0icon\x1f%s\x1finfo\x1f%s\n' "$display" "$icon" "$exec"
+    else
+        printf '%s\0info\x1f%s\n' "$display" "$exec"
+    fi
+done < "$CACHE"
