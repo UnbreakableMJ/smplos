@@ -63,5 +63,27 @@ if test -f ~/.config/fish/theme.fish
     source ~/.config/fish/theme.fish
 end
 
+# ── Media helpers ────────────────────────────────────────────
+# yt-dlp
+alias yaopus  'yt-dlp --extract-audio --audio-format opus --audio-quality 48k'
+alias yamax   'yt-dlp -f bestaudio'
+alias yah     'yt-dlp --extract-audio --audio-quality 0'
+alias yvh     'yt-dlp -f "bestvideo+bestaudio/best"'
+alias yvmax   'yt-dlp -f "bestvideo*+bestaudio/best" --merge-output-format mkv'
+
+# ffmpeg — trim video/audio without re-encoding: ev <file> <start> <end>
+function ev
+    if test (count $argv) -ne 3
+        echo "Usage: ev <inputfile> <start> <end>"
+        return 1
+    end
+    set input $argv[1]
+    set start $argv[2]
+    set end   $argv[3]
+    set base  (string replace -r '\.[^.]+$' '' $input)
+    set ext   (string match -r '[^.]+$' $input)
+    ffmpeg -ss $start -to $end -i $input -c copy {$base}_cut.$ext
+end
+
 # ── Greeting ─────────────────────────────────────────────────
 set -g fish_greeting
