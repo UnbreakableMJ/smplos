@@ -263,6 +263,7 @@ typedef struct {
 	xkb_keysym_t keysym;
 	void (*func)(const Arg *);
 	const Arg arg;
+	uint screen; /* 0 = any, S_PRI = primary only, S_ALT = alt only */
 } Shortcut;
 
 typedef struct {

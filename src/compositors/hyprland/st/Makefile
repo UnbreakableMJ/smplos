@@ -20,7 +20,16 @@ SRC = st.c wl.c xdg-shell-protocol.c xdg-decoration-protocol.c $(SIXEL_C) $(LIGA
 OBJ = $(SRC:%.c=.objects/%.o)
 DEP = $(SRC:%.c=.deps/%.d)
 
-all: st-wl
+all: bump-version st-wl
+
+bump-version:
+	@old=$$(grep '^VERSION = ' config.mk | sed 's/VERSION = //'); \
+	 patch=$$(echo $$old | cut -d. -f3); \
+	 new=$$(echo $$old | sed "s/\.$${patch}$$/.$$(( patch + 1 ))/"); \
+	 sed -i "s/^VERSION = .*/VERSION = $$new/" config.mk; \
+	 echo "  VER $$new"
+
+.PHONY: bump-version
 
 options:
 	@echo st-wl build options:

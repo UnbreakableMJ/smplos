@@ -1028,6 +1028,8 @@ execsh(char *cmd, char **args)
 	setenv("HOME", pw->pw_dir, 1);
 	setenv("TERM", termname, 1);
 	setenv("COLORTERM", "truecolor", 1);
+	setenv("TERM_PROGRAM", "st-wl", 1);
+	setenv("TERM_PROGRAM_VERSION", VERSION, 1);
 
 	signal(SIGCHLD, SIG_DFL);
 	signal(SIGHUP, SIG_DFL);
@@ -2803,7 +2805,7 @@ csihandle(void)
 	case '>':
 		switch (csiescseq.mode[1]) {
 			case 'q': // XTVERION
-				n = snprintf(buffer, sizeof buffer, "\x1bP>|st-wl(0.9.2)\x1b\\");
+				n = snprintf(buffer, sizeof buffer, "\x1bP>|st-wl(" VERSION ")\x1b\\");
 				ttywrite(buffer, n, 1);
 			break;
 			case 'c': // Secondary DA (DA2)

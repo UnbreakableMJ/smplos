@@ -301,6 +301,15 @@ static char *opt_dir   = NULL;
 
 #if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH
 static int focused = 0;
+/* smplOS: per-pixel bg alpha for unfocused terminal state, loaded from
+ * term_opacity_inactive in colors.toml. Mirrors term_alpha for focused. */
+static uint8_t term_alpha_unfocused = 255;
+#if ALPHA_FOCUS_FADE_MS > 0
+/* Focus-loss alpha fade: wall-clock driven so end value is always exact. */
+static uint8_t        term_alpha_current = 255; /* interpolated alpha used while fading */
+static int            focus_fade_step    = 0;   /* 0 = idle, 1 = fading */
+static struct timespec focus_fade_start;         /* monotonic time when fade began */
+#endif // ALPHA_FOCUS_FADE_MS > 0
 #endif // ALPHA_FOCUS_HIGHLIGHT_PATCH
 
 #if BLINKING_CURSOR_PATCH
@@ -870,7 +879,15 @@ kbdenter(void *data, struct wl_keyboard *keyboard, uint32_t serial,
 	win.mode |= MODE_FOCUSED;
 	if (IS_SET(MODE_FOCUS))
 		ttywrite("\033[I", 3, 0);
-	/* need to redraw the cursor */
+	/* repaint immediately on focus gain (snap to focused alpha) */
+#if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH
+#if ALPHA_FOCUS_FADE_MS > 0
+	focus_fade_step    = 0;
+	term_alpha_current = term_alpha;
+#endif
+	wl.resized = true;
+	tfulldirt();
+#endif
 	wlneeddraw();
 }
 
@@ -883,7 +900,21 @@ kbdleave(void *data, struct wl_keyboard *keyboard, uint32_t serial,
 	win.mode &= ~MODE_FOCUSED;
 	if (IS_SET(MODE_FOCUS))
 		ttywrite("\033[O", 3, 0);
-	/* need to redraw the cursor */
+	/* repaint on focus loss (fade or instant depending on ALPHA_FOCUS_FADE_MS) */
+#if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH
+#if ALPHA_FOCUS_FADE_MS > 0
+	if (term_alpha != term_alpha_unfocused) {
+		focus_fade_step    = 1;
+		term_alpha_current = term_alpha;
+		clock_gettime(CLOCK_MONOTONIC, &focus_fade_start);
+	} else {
+		focus_fade_step    = 0;
+		term_alpha_current = term_alpha_unfocused;
+	}
+#endif // ALPHA_FOCUS_FADE_MS > 0
+	wl.resized = true;
+	tfulldirt();
+#endif
 	wlneeddraw();
 	/* disable key repeat */
 	repeat.len = 0;
@@ -953,9 +984,10 @@ kbdkey(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time,
 
 	/* 1. shortcuts */
 	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
-		if (ksym == bp->keysym && match(bp->mod, wl.xkb.mods)) {
+		if (ksym == bp->keysym && match(bp->mod, wl.xkb.mods)
+		    && (!bp->screen || (bp->screen == (tisaltscr() ? S_ALT : S_PRI)))) {
 			bp->func(&(bp->arg));
-			/* Set up function repeat for PageUp/PageDown */
+			wlneeddraw(); /* shortcut never goes through send:, so trigger draw here */
 			if (ksym == XKB_KEY_Page_Up || ksym == XKB_KEY_Page_Down ||
 			    ksym == XKB_KEY_Prior || ksym == XKB_KEY_Next) {
 				repeatfunc.func = bp->func;
@@ -1196,6 +1228,27 @@ framedone(void *data, struct wl_callback *callback, uint32_t time)
 {
 	wl_callback_destroy(callback);
 	wl.framecb = NULL;
+#if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH && ALPHA_FOCUS_FADE_MS > 0
+	if (focus_fade_step > 0) {
+		/* time-based interpolation: always ends exactly at term_alpha_unfocused */
+		struct timespec _now;
+		clock_gettime(CLOCK_MONOTONIC, &_now);
+		long _elapsed = (_now.tv_sec  - focus_fade_start.tv_sec)  * 1000L
+		              + (_now.tv_nsec - focus_fade_start.tv_nsec) / 1000000L;
+		if (_elapsed >= (long)ALPHA_FOCUS_FADE_MS) {
+			focus_fade_step    = 0;
+			term_alpha_current = term_alpha_unfocused;
+		} else {
+			int _a = (int)term_alpha
+			       + ((int)term_alpha_unfocused - (int)term_alpha)
+			         * (int)_elapsed / (int)ALPHA_FOCUS_FADE_MS;
+			term_alpha_current = (uint8_t)(_a < 0 ? 0 : _a > 255 ? 255 : _a);
+		}
+		wl.resized = true;
+		tfulldirt();
+		wlneeddraw();
+	} else
+#endif // ALPHA_FOCUS_FADE_MS > 0
 	if (wl.needdraw)
 		wlneeddraw();
 }
@@ -1286,11 +1339,12 @@ static int wlloadcolor(int i, const char *name, uint32_t *color)
 
 #if ALPHA_PATCH
 static bool
-parse_theme_alpha_file(const char *path, float *out_alpha)
+parse_theme_alpha_file(const char *path, float *out_alpha, float *out_alpha_inactive)
 {
 	FILE *fp;
 	char line[512];
 	char value[64];
+	bool found_active = false;
 
 	if (!path || !out_alpha)
 		return false;
@@ -1308,18 +1362,25 @@ parse_theme_alpha_file(const char *path, float *out_alpha)
 			parsed = strtof(value, NULL);
 			if (parsed >= 0.0f && parsed <= 1.0f) {
 				*out_alpha = parsed;
-				fclose(fp);
-				return true;
+				found_active = true;
 			}
+		} else if (out_alpha_inactive &&
+		           (sscanf(line, " term_opacity_inactive = \"%63[0-9.]\"", value) == 1 ||
+		            sscanf(line, "term_opacity_inactive = \"%63[0-9.]\"", value) == 1 ||
+		            sscanf(line, " term_opacity_inactive = %63[0-9.]", value) == 1 ||
+		            sscanf(line, "term_opacity_inactive = %63[0-9.]", value) == 1)) {
+			parsed = strtof(value, NULL);
+			if (parsed >= 0.0f && parsed <= 1.0f)
+				*out_alpha_inactive = parsed;
 		}
 	}
 
 	fclose(fp);
-	return false;
+	return found_active;
 }
 
 static bool
-load_theme_alpha(float *out_alpha)
+load_theme_alpha(float *out_alpha, float *out_alpha_inactive)
 {
 	char path[PATH_MAX];
 	char theme_name[128] = {0};
@@ -1335,7 +1396,7 @@ load_theme_alpha(float *out_alpha)
 
 	/* Primary active theme path */
 	snprintf(path, sizeof(path), "%s/.config/smplos/current/theme/colors.toml", home);
-	if (parse_theme_alpha_file(path, out_alpha))
+	if (parse_theme_alpha_file(path, out_alpha, out_alpha_inactive))
 		return true;
 
 	/* Fallback: resolve from current theme name */
@@ -1353,11 +1414,11 @@ load_theme_alpha(float *out_alpha)
 		return false;
 
 	snprintf(path, sizeof(path), "%s/.config/smplos/themes/%s/colors.toml", home, theme_name);
-	if (parse_theme_alpha_file(path, out_alpha))
+	if (parse_theme_alpha_file(path, out_alpha, out_alpha_inactive))
 		return true;
 
 	snprintf(path, sizeof(path), "%s/.local/share/smplos/themes/%s/colors.toml", home, theme_name);
-	if (parse_theme_alpha_file(path, out_alpha))
+	if (parse_theme_alpha_file(path, out_alpha, out_alpha_inactive))
 		return true;
 
 	return false;
@@ -1389,9 +1450,26 @@ void xloadcols(void)
 		if (cli_alpha >= 0.0f && cli_alpha <= 1.0f)
 			alpha = cli_alpha;
 	} else {
-		float theme_alpha;
-		if (load_theme_alpha(&theme_alpha))
+		float theme_alpha = alpha;
+		#if ALPHA_FOCUS_HIGHLIGHT_PATCH
+		float theme_alpha_inactive = alphaUnfocused;
+		bool loaded_ok = load_theme_alpha(&theme_alpha, &theme_alpha_inactive);
+		if (loaded_ok) {
 			alpha = theme_alpha;
+			alphaUnfocused = theme_alpha_inactive;
+			term_alpha_unfocused = (uint8_t)(alphaUnfocused * 255.0);
+		} else {
+			/* No colors.toml found — fall back to fully opaque (black bg) */
+			alpha = 1.0f;
+			alphaUnfocused = 1.0f;
+			term_alpha_unfocused = 255;
+		}
+		#else
+		if (load_theme_alpha(&theme_alpha, NULL))
+			alpha = theme_alpha;
+		else
+			alpha = 1.0f; /* No colors.toml — fully opaque fallback */
+		#endif
 	}
 	term_alpha = (uint8_t)(alpha*255.0);
 	#endif // ALPHA_PATCH
@@ -1617,7 +1695,18 @@ wlneeddraw(void)
 static void wlclear(int x1, int y1, int x2, int y2)
 {
 	uint32_t color = dc.col[IS_SET(MODE_REVERSE) ? defaultfg : defaultbg];
-	color = (color & term_alpha << 24) | (color & 0x00FFFFFF);
+	#if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH
+	#if ALPHA_FOCUS_FADE_MS > 0
+	uint8_t bg_alpha = (focus_fade_step > 0)
+	                 ? term_alpha_current
+	                 : (IS_SET(MODE_FOCUSED) ? term_alpha : term_alpha_unfocused);
+	#else
+	uint8_t bg_alpha = IS_SET(MODE_FOCUSED) ? term_alpha : term_alpha_unfocused;
+	#endif // ALPHA_FOCUS_FADE_MS > 0
+	#else
+	uint8_t bg_alpha = term_alpha;
+	#endif
+	color = (color & bg_alpha << 24) | (color & 0x00FFFFFF);
 	wld_fill_rectangle(wld.renderer, color, x1, y1, x2 - x1, y2 - y1);
 }
 
@@ -1718,7 +1807,18 @@ xfinishdraw(void)
 void wltermclear(int col1, int row1, int col2, int row2)
 {
 	uint32_t color = dc.col[IS_SET(MODE_REVERSE) ? defaultfg : defaultbg];
+#if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH
+	#if ALPHA_FOCUS_FADE_MS > 0
+	uint8_t tc_alpha = (focus_fade_step > 0)
+	                 ? term_alpha_current
+	                 : (IS_SET(MODE_FOCUSED) ? term_alpha : term_alpha_unfocused);
+	#else
+	uint8_t tc_alpha = IS_SET(MODE_FOCUSED) ? term_alpha : term_alpha_unfocused;
+	#endif // ALPHA_FOCUS_FADE_MS > 0
+	color = (color & ((uint32_t)tc_alpha << 24)) | (color & 0x00FFFFFF);
+#else
 	color = (color & term_alpha << 24) | (color & 0x00FFFFFF);
+#endif
 	#if ANYSIZE_PATCH
 	wld_fill_rectangle(wld.renderer, color, win.hborderpx + col1 * win.cw,
 	                   win.vborderpx + row1 * win.ch, (col2 - col1 + 1) * win.cw,
@@ -1901,8 +2001,25 @@ static void wldrawCharacter(Glyph g, int x, int y)
 	if (winy + win.ch >= borderpx + win.th)
 		wlclear(winx, winy + win.ch, winx + width, win.h);
   #endif
-	/* Clean up the region we want to draw to. */
-	wld_fill_rectangle(wld.renderer, (bg & (term_alpha << 24)) | (bg & 0x00FFFFFF), winx, winy, width, win.ch);
+	/* Fill cell background with current animated alpha.
+	 * The compositor is set to opacity 1.0 override for terminals so
+	 * per-pixel alpha passes through directly.  term_alpha_current
+	 * follows the focus-fade animation (wlclear/wltermclear use the same). */
+#if ALPHA_PATCH && ALPHA_FOCUS_HIGHLIGHT_PATCH
+	#if ALPHA_FOCUS_FADE_MS > 0
+	uint8_t cell_alpha = (focus_fade_step > 0)
+	                   ? term_alpha_current
+	                   : (IS_SET(MODE_FOCUSED) ? term_alpha : term_alpha_unfocused);
+	#else
+	uint8_t cell_alpha = IS_SET(MODE_FOCUSED) ? term_alpha : term_alpha_unfocused;
+	#endif
+#elif ALPHA_PATCH
+	uint8_t cell_alpha = term_alpha;
+#else
+	uint8_t cell_alpha = 255;
+#endif
+	wld_fill_rectangle(wld.renderer, (bg & 0x00FFFFFF) | ((uint32_t)cell_alpha << 24),
+	                   winx, winy, width, win.ch);
 
 	/*
 	 * Search for the range in the to be printed string of glyphs
@@ -2656,7 +2773,7 @@ run(void)
 			timeout = 999;
 
 		/* Ensure we don't block too long on pselect if a repeat is active */
-		if (repeat.len > 0 && repeat.started && timeout > keyrepeatinterval)
+		if (((repeat.len > 0 && repeat.started) || (repeatfunc.active && repeatfunc.started)) && timeout > keyrepeatinterval)
 			timeout = keyrepeatinterval;
 
 		drawtimeout.tv_nsec = 1000000 * timeout;
@@ -2724,27 +2841,46 @@ run(void)
 				 * Do not force a draw here.  Let the natural
 				 * event loop handle drawing via wl.needdraw.
 				 * This avoids blocking on pselect or frame callbacks
-				 * when the system or shell is under load. */
-				wlneeddraw();
+                                 * when the system or shell is under load.
+                                 *
+                                 * EXCEPTION: if the draw-batching window (maxlatency)
+                                 * has already expired we must draw NOW.  When the
+                                 * repeat interval (e.g. 20 ms) is shorter than
+                                 * maxlatency (33 ms) the top-of-loop timeout clamp
+                                 * keeps reducing the pselect wait to keyrepeatinterval,
+                                 * so the draw code at the bottom is perpetually
+                                 * bypassed via 'continue'.  Without this explicit draw
+                                 * altscreen apps (micro, vim, htop) receive many PgUp
+                                 * keypresses but the screen never updates until the
+                                 * key is released — causing the "burst then freeze"
+                                 * sluggishness. */
+                                if (wl.needdraw && !wl.framecb && drawing &&
+                                    TIMEDIFF(now, trigger) >= (long)maxlatency) {
+                                        draw();
+                                        wl_display_flush(wl.dpy);
+                                        drawing = 0;
+                                } else {
+                                        wlneeddraw();
+                                }
 
-				/* Use standard select timeout logic next iteration */
-				timeout = keyrepeatinterval;
-				continue;
-			}
+                                /* Use standard select timeout logic next iteration */
+                                timeout = keyrepeatinterval;
+                                continue;
+                        }
 
-			/* During the initial delay, adjust timeout but fall
-			 * through to the normal draw path so the first
-			 * keypress result is rendered normally. */
-		}
+                        /* During the initial delay, adjust timeout but fall
+                         * through to the normal draw path so the first
+                         * keypress result is rendered normally. */
+                }
 
-		/* Function repeat: for shortcuts like PageUp/PageDown scroll */
-		if (repeatfunc.active)
-		{
-			long timeDiff = TIMEDIFF(now, repeatfunc.last);
-			int did_repeat = 0;
+                /* Function repeat: for shortcuts like PageUp/PageDown scroll */
+                if (repeatfunc.active)
+                {
+                        long timeDiff = TIMEDIFF(now, repeatfunc.last);
+                        int did_repeat = 0;
 
-			if (!repeatfunc.started)
-			{
+                        if (!repeatfunc.started)
+                        {
 				if (timeDiff >= keyrepeatdelay)
 				{
 					repeatfunc.started = true;
@@ -2762,13 +2898,15 @@ run(void)
 
 			if (did_repeat)
 			{
-				/* Force immediate draw if no frame callback pending.
-				 * Unlike string repeat, scroll has no tty activity
-				 * so we must draw explicitly. */
-				if (!wl.framecb) {
-					draw();
-					wl_display_flush(wl.dpy);
+				/* For scroll repeats, cancel any pending frame callback so we
+				 * are never blocked by the compositor's frame timing. */
+				if (wl.framecb) {
+					wl_callback_destroy(wl.framecb);
+					wl.framecb = NULL;
 				}
+				wlneeddraw();
+				draw();
+				wl_display_flush(wl.dpy);
 				timeout = keyrepeatinterval;
 				continue;
 			}
