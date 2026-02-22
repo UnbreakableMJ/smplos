@@ -4,18 +4,22 @@
 
 /*****----- Configuration -----*****/
 configuration {
-    modi:                        "drun,settings:rofi-settings-src";
+    modi:                        "multimedia:rofi-apps-multimedia-src,development:rofi-apps-development-src,graphics:rofi-apps-graphics-src,internet:rofi-apps-internet-src,office:rofi-apps-office-src,apps:rofi-apps-apps-src,settings:rofi-settings-src";
     show-icons:                  true;
-    display-drun:                " <u>A</u>pps";
+    display-multimedia:          "Multimedia";
+    display-development:         "Development";
+    display-graphics:            "Graphics";
+    display-internet:            "Internet";
+    display-office:              "Office";
+    display-apps:                "Apps";
     display-settings:            " <u>S</u>ettings";
-    drun-display-format:         "{name} [<span weight='light' size='small'><i>({generic})</i></span>]";
 }
 
 /*****----- Global Properties -----*****/
 * {
     font:                        "JetBrainsMono Nerd Font 10";
-    background:                  rgba(26,27,38,0.85);
-    background-alt:              rgba(50,52,74,0.85);
+    background:                  rgba(26,27,38,0.70);
+    background-alt:              rgba(50,52,74,0.70);
     background-solid:            #1a1b26;
     foreground:                  #a9b1d6;
     foreground-dim:              #444b6a;

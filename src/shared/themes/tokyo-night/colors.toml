@@ -28,13 +28,25 @@ color15 = "#acb0d0"
 rounding = "3"
 blur_size = "14"
 blur_passes = "3"
+# Compositor opacity — affects the ENTIRE window frame including text.
+# Keep this close to 1.0 so text stays sharp. The blur behind the window
+# provides the frosted glass depth effect without dimming content.
+# For true per-pixel transparency (background only, text fully opaque)
+# use the Rust/Slint apps — they handle their own ARGB alpha.
 opacity_active = "1.0"
-opacity_inactive = "0.95"
-term_opacity_active = "1.0"
-term_opacity_inactive = "0.95"
-popup_opacity = "0.85"
+opacity_inactive = "1.0"
+term_opacity_active = "0.85"
+term_opacity_inactive = "0.30"
+popup_opacity = "0.70"
+messenger_opacity = "0.85"
+browser_opacity = "1.0"
 
 # Layout (gaps, borders)
 gaps_in = "2"
 gaps_out = "4"
 border_size = "2"
+
+# App theme selectors (use another theme id to reuse its app presets)
+app_theme_nvim = "tokyo-night"
+app_theme_vscode = "tokyo-night"
+app_theme_logseq = "tokyo-night"

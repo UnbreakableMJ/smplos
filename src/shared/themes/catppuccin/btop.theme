@@ -1,10 +1,10 @@
 # btop color theme — auto-generated from colors.toml
 theme[main_bg]="1e1e2e"
-theme[main_fg]="b4d0fb"
+theme[main_fg]="cdd6f4"
 theme[title]="89b4fa"
 theme[hi_fg]="89b4fa"
 theme[selected_bg]="585b70"
-theme[selected_fg]="b4d0fb"
+theme[selected_fg]="cdd6f4"
 theme[inactive_fg]="585b70"
 theme[proc_misc]="89b4fa"
 theme[cpu_box]="89b4fa"
